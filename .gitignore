@@ -1,0 +1,5 @@
+# Main executable
+music_player
+
+# Backup files from vim and emacs
+*~
