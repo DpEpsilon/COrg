@@ -1,0 +1,50 @@
+# The following was taken from this forum post:
+# http://www.cavestory.org/forums/index.php?/topic/2695-orgs-in-java/
+
+orgsamp.dat:
+All integer values are unsigned big-endian,
+except sample frames, which are signed (2s complement).
+
+1 byte: number of melody samples (100)
+3 bytes: number of sample frames per melody sample (256)
+for each melody sample:
+   for each sample frame:
+      1 byte: sample frame
+1 byte: number of drum samples (28)
+2 bytes: sampling rate of drum samples in Hertz at lowest non-zero frequency (2205)
+for each drum sample:
+   3 bytes: number of sample frames
+   for each sample frame:
+      1 byte: sample frame
+
+
+*.org:
+All integer values are unsigned little-endian.
+A "click" is the smallest unit of time in an org file.
+
+6 bytes: ascii string "Org-02" (or "Org-03" if the file uses percussion instruments only available in orgmaker 2.05)
+2 bytes: "wait" value (the length of a click in milliseconds)
+1 byte: beats per measure
+1 byte: clicks per beat
+4 bytes: position of the loop start, in clicks (the first click being position 0)
+4 bytes: position of the loop end, in clicks
+for each track:
+   2 bytes: "freq" value*
+   1 byte: instrument
+   1 byte: 1 if "pi" checkbox is checked, 0 otherwise*
+   2 bytes: number of resources
+for each track:
+   for each resource:
+      4 bytes: position of the resource, in clicks
+   for each resource:
+      1 byte: note (0=lowest note, 45=A440, 95=highest note, 255=no change)
+   for each resource:
+      1 byte: duration (in clicks, I believe this is ignored if note value is "no change")
+   for each resource:
+      1 byte: volume (0=silent, 200=default, 254=max, 255=no change)
+   for each resource:
+      1 byte: pan (0=full left, 6=center, 12=full right, 255=no change)
+
+*Even though orgmaker only allows you to edit these for melody tracks, percussion tracks also have this data, 
+with the default values of freq=1000, pi=0.
+I haven't tested to see if modifying these has any effect on playback.
