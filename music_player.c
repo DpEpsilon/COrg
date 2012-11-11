@@ -90,24 +90,6 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
     for(i=0; i<len; i++) {
         *stream = 0;
         for (j = 0; j < NUM_TRACKS; j++) {
-            /*
-            switch (instrument[j]) {
-            default:
-            case SINE:
-                *stream += 64*cos(angles[j]);
-                break;
-            case SQUARE:
-                *stream += (angles[j] > PI ? 32 : -32);
-                break;
-            case SAWTOOTH:
-                *stream += angles[j] / (2.0*PI) * 128 - 64;
-                break;
-            case SPECIAL:
-                *stream += sampler(audio_samples, SAMPLE_LENGTH, angles[j]);
-                break;
-            }
-            */
-
             *stream += sampler(audio_samples[instrument[j]],
                                SAMPLE_LENGTH, angles[j]);
             
