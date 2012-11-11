@@ -11,3 +11,8 @@ panning and volume features.
 
 Details of the sample file and the .org format can be found in
 ORG_SPECS.txt.
+
+To Build:
+Requires libsdl (only tested with version 1.2)
+
+$ gcc -Wall -Werror -o music_player music_player.c -lSDL

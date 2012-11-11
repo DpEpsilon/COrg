@@ -25,14 +25,8 @@ void read_samples();
 signed char *audio_samples[SAMPLES];
 
 int main(int argc, char *argv[]) {
-    
-    SDL_Surface *screen;
-    SDL_Event event;
-    int done = 0;
-    
     /* Audio Setup */
     SDL_AudioSpec *desired, *obtained;
-    SDL_AudioSpec *hardware_spec;
 
     read_samples();
     
@@ -58,28 +52,14 @@ int main(int argc, char *argv[]) {
     /* desired spec is no longer needed */
     free(desired);
     desired=NULL;
-    hardware_spec=obtained;
  
     SDL_PauseAudio(0);
- 
-//    screen = SDL_SetVideoMode(320, 240, 0, 0);
-/*
-    while(!done) {
-        while(SDL_PollEvent(&event)) {
-            switch(event.type) {
-            case SDL_QUIT:
-                done = 1;
-                break;
-            }
-        }
-        SDL_Delay(50);
-        
-    }
-*/
     getchar();
     SDL_PauseAudio(1);
-
+    
     SDL_Quit();
+
+    return EXIT_SUCCESS;
 }
 
 #include "music.h"
