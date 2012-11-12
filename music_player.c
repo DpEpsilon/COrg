@@ -16,7 +16,10 @@ void read_samples();
 #define BEAT_SIZE 35
 //#define TUNING_NOTE 440
 #define TUNING_NOTE 220
-#define TEMPERAMENT 1.029302236643492 // pow(2.0,1.0/24.0)
+
+#define A440 45
+
+#define TEMPERAMENT 1.0594630943592953 // pow(2.0,1.0/12.0)
 #define PI 3.14159265358979323846264
 
 #define SAMPLE_LENGTH 256
@@ -75,7 +78,7 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
         
         frequencies[i] = soundPitches[c_lengths[i] + note_upto[i]] != -128 ?
             TUNING_NOTE *
-            pow(TEMPERAMENT,(float)soundPitches[c_lengths[i] + note_upto[i]])
+            pow(TEMPERAMENT,(float)(soundPitches[c_lengths[i] + note_upto[i]]-A440))
             : 0;
 
         beat_upto[i] += 1;
