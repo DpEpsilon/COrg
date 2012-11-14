@@ -42,14 +42,6 @@ int main(int argc, char *argv[]) {
     }        
     
     org = organya_open(argv[1]);
-
-    int i;
-    printf("%d\n", org->tracks[1].num_resources);
-    for (i = 0; i < org->tracks[1].num_resources; i++) {
-        printf("%d %d %d\n", org->tracks[1].resources[i].note,
-               org->tracks[1].resources[i].start,
-               org->tracks[1].resources[i].duration);
-    }
     
     desired = (SDL_AudioSpec*)malloc(sizeof(SDL_AudioSpec));
     obtained = (SDL_AudioSpec*)malloc(sizeof(SDL_AudioSpec));
@@ -94,23 +86,18 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
     int i, j;
     for (i = 0; i < ORG_NUM_TRACKS/2; i++) {
         track_t* cur_track = &org->tracks[i];
-        /*
-        frequencies[i] = soundPitches[c_lengths[i] + note_upto[i]] != -128 ?
-            TUNING_NOTE *
-            pow(TEMPERAMENT,(float)(soundPitches[c_lengths[i] + note_upto[i]]-A440))
-            : 0;
-        */
+
+        if (resource_upto[i] < cur_track->num_resources - 1 &&
+            current_click >= cur_track->resources[resource_upto[i]+1].start) {
+            resource_upto[i]++;
+        }
+        
         int start = cur_track->resources[resource_upto[i]].start;
         int end = cur_track->resources[resource_upto[i]].start +
             cur_track->resources[resource_upto[i]].duration - 1;
 
-        
-        if (current_click > end) {
-            resource_upto[i]++;
-            start = cur_track->resources[resource_upto[i]].start;
-        }
         if (resource_upto[i] < cur_track->num_resources &&
-            current_click >= start) {
+            current_click >= start && current_click <= end) {
             if (cur_track->resources[resource_upto[i]].note != 255) {
                 frequencies[i] = TUNING_NOTE *
                     pow(TEMPERAMENT,
@@ -148,7 +135,7 @@ int sampler(signed char* samples, int length, double angle) {
     if ((int)(angle/(2*PI) * length) >= length) {
         return samples[length-1]/2;
     } else {
-        return samples[(int)(angle/(2*PI) * length)]/2;
+        return samples[(int)(angle/(2*PI) * length)];
     }
 }
 
