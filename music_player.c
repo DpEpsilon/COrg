@@ -119,10 +119,12 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
             angles[j] += (PI/22050)*frequencies[j]/2;
             if (angles[j] >= 2.0*PI) {
                 angles[j] -=  2.0*PI;
+                /*
                 if (angles[j] >= 2.0*PI) {
                     angles[j] = 0; // Terrible hack,
                     // getting huge angle values for some reason
                 }
+                */
             }
         }
         stream++;
@@ -146,9 +148,8 @@ void read_samples() {
     fseek(samp_file, 4, SEEK_CUR);
         
     for (i = 0; i < SAMPLES; i++) {
-        // + 1 just in case of overflow due to dodgy floats (see sampler)
         audio_samples[i] =
-            malloc(SAMPLE_LENGTH * sizeof(signed char) + 1);
+            malloc(SAMPLE_LENGTH * sizeof(signed char));
         
         fread(audio_samples[i],
               sizeof(signed char), SAMPLE_LENGTH, samp_file);
