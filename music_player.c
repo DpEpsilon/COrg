@@ -98,11 +98,9 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
 
         if (resource_upto[i] < cur_track->num_resources &&
             current_click >= start && current_click <= end) {
-            if (cur_track->resources[resource_upto[i]].note != ORG_NO_CHANGE) {
-                frequencies[i] = TUNING_NOTE *
-                    pow(TEMPERAMENT,
-                        (float)(cur_track->resources[resource_upto[i]].note - A440));
-            }
+            frequencies[i] = TUNING_NOTE *
+                pow(TEMPERAMENT,
+                    (float)(cur_track->resources[resource_upto[i]].note - A440));
         } else {
             frequencies[i] = 0;
         }

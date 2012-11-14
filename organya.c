@@ -28,8 +28,6 @@ organya_t* organya_open(const char* filename) {
             fread(&org->tracks[t].resources[r].start, 4, 1, file);
         }
         for (r = 0; r < org->tracks[t].num_resources; r++) {
-            // Any no change values are retained here,
-            // for now...
             fread(&org->tracks[t].resources[r].note, 1, 1, file);
         }
         for (r = 0; r < org->tracks[t].num_resources; r++) {
@@ -55,7 +53,14 @@ organya_t* organya_open(const char* filename) {
                     org->tracks[t].resources[r-1].pan;
             }
         }
+
+        for (r = 0; r < org->tracks[t].num_resources; r++) {
+            if (org->tracks[t].resources[r].note == ORG_NO_CHANGE) {
+                org->tracks[t].resources[r].note =
+                    org->tracks[t].resources[r-1].note;
+            }
+        }
     }
-    
+    fclose(file);
     return org;
 }
