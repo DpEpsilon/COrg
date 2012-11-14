@@ -98,7 +98,7 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
 
         if (resource_upto[i] < cur_track->num_resources &&
             current_click >= start && current_click <= end) {
-            if (cur_track->resources[resource_upto[i]].note != 255) {
+            if (cur_track->resources[resource_upto[i]].note != ORG_NO_CHANGE) {
                 frequencies[i] = TUNING_NOTE *
                     pow(TEMPERAMENT,
                         (float)(cur_track->resources[resource_upto[i]].note - A440));
@@ -113,7 +113,8 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
         for (j = 0; j < ORG_NUM_TRACKS/2; j++) {
             track_t* cur_track = &org->tracks[j];
             *stream += sampler(audio_samples[cur_track->instrument],
-                               SAMPLE_LENGTH, angles[j]);
+                               SAMPLE_LENGTH, angles[j]) *
+                (float)(cur_track->resources[resource_upto[j]].volume)/254.0;
             
             angles[j] += (PI/22050)*frequencies[j]/2;
             if (angles[j] >= 2.0*PI) {

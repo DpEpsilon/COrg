@@ -28,10 +28,12 @@ organya_t* organya_open(const char* filename) {
             fread(&org->tracks[t].resources[r].start, 4, 1, file);
         }
         for (r = 0; r < org->tracks[t].num_resources; r++) {
+            // Any no change values are retained here,
+            // for now...
             fread(&org->tracks[t].resources[r].note, 1, 1, file);
         }
         for (r = 0; r < org->tracks[t].num_resources; r++) {
-            if (org->tracks[t].resources[r].note == 255) {
+            if (org->tracks[t].resources[r].note == ORG_NO_CHANGE) {
                 fseek(file, 1, SEEK_CUR);
                 org->tracks[t].resources[r].duration =
                     org->tracks[t].resources[r-1].duration;
@@ -41,9 +43,17 @@ organya_t* organya_open(const char* filename) {
         }
         for (r = 0; r < org->tracks[t].num_resources; r++) {
             fread(&org->tracks[t].resources[r].volume, 1, 1, file);
+            if (org->tracks[t].resources[r].volume == ORG_NO_CHANGE) {
+                org->tracks[t].resources[r].volume =
+                    org->tracks[t].resources[r-1].volume;
+            }
         }
         for (r = 0; r < org->tracks[t].num_resources; r++) {
             fread(&org->tracks[t].resources[r].pan, 1, 1, file);
+            if (org->tracks[t].resources[r].pan == ORG_NO_CHANGE) {
+                org->tracks[t].resources[r].pan =
+                    org->tracks[t].resources[r-1].pan;
+            }
         }
     }
     

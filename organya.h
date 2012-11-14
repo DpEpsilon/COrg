@@ -2,6 +2,7 @@
 #define ORGANYA_H
 
 #define ORG_NUM_TRACKS 16
+#define ORG_NO_CHANGE 255
 
 typedef struct resource {
     unsigned int start;
