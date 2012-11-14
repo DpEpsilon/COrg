@@ -31,7 +31,13 @@ organya_t* organya_open(const char* filename) {
             fread(&org->tracks[t].resources[r].note, 1, 1, file);
         }
         for (r = 0; r < org->tracks[t].num_resources; r++) {
-            fread(&org->tracks[t].resources[r].duration, 1, 1, file);
+            if (org->tracks[t].resources[r].note == 255) {
+                fseek(file, 1, SEEK_CUR);
+                org->tracks[t].resources[r].duration =
+                    org->tracks[t].resources[r-1].duration;
+            } else {
+                fread(&org->tracks[t].resources[r].duration, 1, 1, file);
+            }
         }
         for (r = 0; r < org->tracks[t].num_resources; r++) {
             fread(&org->tracks[t].resources[r].volume, 1, 1, file);
