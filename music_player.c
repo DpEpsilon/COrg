@@ -80,6 +80,8 @@ int frequencies[ORG_NUM_TRACKS];
 double angles[ORG_NUM_TRACKS];
 int resource_upto[ORG_NUM_TRACKS];
 
+int loop_start_resources[ORG_NUM_TRACKS];
+
 unsigned int current_click = 0;
 
 void create_tone(void *userdata, Uint8 *stream, int len) {
@@ -96,6 +98,12 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
         int end = cur_track->resources[resource_upto[i]].start +
             cur_track->resources[resource_upto[i]].duration - 1;
 
+        if (current_click == org->loop_start) {
+            for (j = 0; j < ORG_NUM_TRACKS/2; j++) {
+                loop_start_resources[j] = resource_upto[j];
+            }
+        }
+        
         if (resource_upto[i] < cur_track->num_resources &&
             current_click >= start && current_click <= end) {
             frequencies[i] = TUNING_NOTE *
@@ -129,6 +137,12 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
     }
 
     current_click++;
+    if (current_click >= org->loop_end) {
+        current_click = org->loop_start;
+        for (i = 0; i < ORG_NUM_TRACKS/2; i++) {
+            resource_upto[i] = loop_start_resources[i];
+        }
+    }
 }
 
 int sampler(signed char* samples, int length, double angle) {
