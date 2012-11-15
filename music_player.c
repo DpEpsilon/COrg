@@ -10,6 +10,9 @@ void create_tone(void *userdata, Uint8 *stream, int len);
 int sampler(signed char* samples, int length, double angle);
 void read_samples();
 
+int drum_sampler(signed char* samples, int length,
+                 double frequency, int click);
+
 #define SINE 0
 #define SQUARE 1
 #define SAWTOOTH 2
@@ -23,10 +26,14 @@ void read_samples();
 #define TEMPERAMENT 1.0594630943592953 // pow(2.0,1.0/12.0)
 #define PI 3.14159265358979323846264
 
-#define SAMPLE_LENGTH 256
-#define SAMPLES       100
+#define SAMPLE_LENGTH     256
+#define SAMPLES           100
+#define NUM_DRUM_SAMPLES  28
 
 signed char *audio_samples[SAMPLES];
+
+int drum_sample_lengths[NUM_DRUM_SAMPLES];
+signed char *drum_samples[NUM_DRUM_SAMPLES];
 
 organya_t* org;
 
@@ -59,7 +66,7 @@ int main(int argc, char *argv[]) {
 	/* Open the audio device */
     if (SDL_OpenAudio(desired, obtained) < 0){
         fprintf(stderr, "Couldn't open audio: %s\n", SDL_GetError());
-        exit(-1);
+        return 1;
     }
     /* desired spec is no longer needed */
     free(desired);
@@ -86,9 +93,9 @@ unsigned int current_click = 0;
 
 void create_tone(void *userdata, Uint8 *stream, int len) {
     int i, j;
-    for (i = 0; i < ORG_NUM_TRACKS/2; i++) {
+    for (i = 0; i < ORG_NUM_TRACKS; i++) {
         track_t* cur_track = &org->tracks[i];
-
+        
         if (resource_upto[i] < cur_track->num_resources - 1 &&
             current_click >= cur_track->resources[resource_upto[i]+1].start) {
             resource_upto[i]++;
@@ -118,19 +125,16 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
         *stream = 0;
         for (j = 0; j < ORG_NUM_TRACKS/2; j++) {
             track_t* cur_track = &org->tracks[j];
-            *stream += sampler(audio_samples[cur_track->instrument],
-                               SAMPLE_LENGTH, angles[j]) *
-                (float)(cur_track->resources[resource_upto[j]].volume)/254.0;
-            
-            angles[j] += (PI/22050)*frequencies[j]/2;
-            if (angles[j] >= 2.0*PI) {
-                angles[j] -=  2.0*PI;
-                /*
+            if (j/8 == 0) {
+                *stream += sampler(audio_samples[cur_track->instrument],
+                                   SAMPLE_LENGTH, angles[j]) *
+                    (float)(cur_track->resources[resource_upto[j]].volume)/254.0;
+                angles[j] += (PI/22050)*frequencies[j]/2;
                 if (angles[j] >= 2.0*PI) {
-                    angles[j] = 0; // Terrible hack,
-                    // getting huge angle values for some reason
+                    angles[j] -=  2.0*PI;
                 }
-                */
+            } else {
+                // TODO: Add drum rendering here
             }
         }
         stream++;
@@ -148,9 +152,9 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
 int sampler(signed char* samples, int length, double angle) {
     // Could overflow the array if angle >= (2*PI)
     if ((int)(angle/(2*PI) * length) >= length) {
-        return samples[length-1]/2;
+        return (int)(samples[length-1]*0.75);
     } else {
-        return samples[(int)(angle/(2*PI) * length)];
+        return (int)(samples[(int)(angle/(2*PI) * length)]*0.75);
     }
 }
 
@@ -163,7 +167,22 @@ void read_samples() {
         audio_samples[i] =
             malloc(SAMPLE_LENGTH * sizeof(signed char));
         
-        fread(audio_samples[i],
-              sizeof(signed char), SAMPLE_LENGTH, samp_file);
+        fread(audio_samples[i], sizeof(signed char),
+              SAMPLE_LENGTH, samp_file);
+    }
+
+    for (i = 0; i < NUM_DRUM_SAMPLES; i++) {
+        fread(&drum_sample_lengths[i], 3, 1, samp_file);
+        char swapper = *(((char*)&drum_sample_lengths[i]) + 2);
+        *(((char*)&drum_sample_lengths[i]) + 2) =
+            *((char*)&drum_sample_lengths[i]);
+        
+        *((char*)&drum_sample_lengths[i]) = swapper;
+
+        drum_samples[i] = malloc(sizeof(signed char) *
+                                 drum_sample_lengths[i]);
+        
+        fread(drum_samples[i], sizeof(signed char),
+              drum_sample_lengths[i], samp_file);
     }
 }
