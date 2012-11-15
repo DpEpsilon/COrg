@@ -170,10 +170,12 @@ void read_samples() {
         fread(audio_samples[i], sizeof(signed char),
               SAMPLE_LENGTH, samp_file);
     }
-
+    fseek(samp_file, 3, SEEK_CUR);
     for (i = 0; i < NUM_DRUM_SAMPLES; i++) {
+
         fread(&drum_sample_lengths[i], 3, 1, samp_file);
         char swapper = *(((char*)&drum_sample_lengths[i]) + 2);
+        
         *(((char*)&drum_sample_lengths[i]) + 2) =
             *((char*)&drum_sample_lengths[i]);
         
