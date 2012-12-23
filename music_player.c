@@ -133,6 +133,7 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
                 }
                 
                 *stream = new_value;
+                
                 angles[j] += (PI/22050)*frequencies[j]/2;
                 
                 if (angles[j] >= 2.0*PI) {
@@ -163,12 +164,10 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
 }
 
 int sampler(signed char* samples, int length, double angle) {
-    // Could overflow the array if angle >= (2*PI)
-    if ((int)(angle/(2*PI) * length) >= length) {
-        return (int)(samples[length-1] * 0.33);
-    } else {
-        return (int)(samples[(int)(angle/(2*PI) * length)] * 0.33);
-    }
+//    if ((int)(angle/(2*PI) * length) >= length) {
+//        return (int)(samples[length-1]);
+    // TODO: linear interpolation
+    return (int)(samples[(int)(angle/(2*PI) * length)]);
 }
 
 void read_samples() {
