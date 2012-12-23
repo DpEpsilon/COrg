@@ -64,3 +64,11 @@ organya_t* organya_open(const char* filename) {
     fclose(file);
     return org;
 }
+
+void organya_delete(organya_t* to_delete) {
+    for (t = 0; t < ORG_NUM_TRACKS; t++) {
+        free(to_delete->tracks[t].resources);
+    }
+    free(to_delete);
+}
+

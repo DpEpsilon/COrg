@@ -26,6 +26,8 @@ typedef struct organya {
 } organya_t;
 
 organya_t* organya_open(const char* filename);
-//void organya_delete(organya_t* to_delete);
+void organya_delete(organya_t* to_delete);
+
+
 
 #endif // ORGANYA_H
