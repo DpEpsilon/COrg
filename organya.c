@@ -78,7 +78,7 @@ org_session_t* organya_new_session(organya_t* org) {
     int i;
     org_session_t* sess = malloc(sizeof(org_session_t));
     sess->org = org;
-    sess->current_tick = 0;
+    sess->current_click = 0;
     
     for (i = 0; i < ORG_NUM_TRACKS; i++) {
         sess->angles[i] = 0;
