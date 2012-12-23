@@ -99,7 +99,7 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
         int start = cur_track->resources[resource_upto[i]].start;
         int end = cur_track->resources[resource_upto[i]].start +
             cur_track->resources[resource_upto[i]].duration - 1;
-
+        
         if (current_click == org->loop_start) {
             for (j = 0; j < ORG_NUM_TRACKS/2; j++) {
                 loop_start_resources[j] = resource_upto[j];
@@ -121,9 +121,18 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
         for (j = 0; j < ORG_NUM_TRACKS; j++) {
             track_t* cur_track = &org->tracks[j];
             if (j/8 == 0) {
-                *stream += sampler(audio_samples[cur_track->instrument],
-                                   SAMPLE_LENGTH, angles[j]) *
+                int new_value = (signed char)(*stream) +
+                    sampler(audio_samples[cur_track->instrument],
+                            SAMPLE_LENGTH, angles[j]) *
                     (float)(cur_track->resources[resource_upto[j]].volume)/254.0;
+
+                if (new_value > 127) {
+                    new_value = 127;
+                } else if (new_value <= -128) {
+                    new_value = -128;
+                }
+                
+                *stream = new_value;
                 angles[j] += (PI/22050)*frequencies[j]/2;
                 
                 if (angles[j] >= 2.0*PI) {
@@ -156,9 +165,9 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
 int sampler(signed char* samples, int length, double angle) {
     // Could overflow the array if angle >= (2*PI)
     if ((int)(angle/(2*PI) * length) >= length) {
-        return (int)(samples[length-1] * 0.3);
+        return (int)(samples[length-1] * 0.33);
     } else {
-        return (int)(samples[(int)(angle/(2*PI) * length)] * 0.3);
+        return (int)(samples[(int)(angle/(2*PI) * length)] * 0.33);
     }
 }
 
