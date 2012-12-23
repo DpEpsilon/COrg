@@ -13,11 +13,6 @@ void read_samples();
 int drum_sampler(signed char* samples, int length,
                  double frequency, int click);
 
-#define SINE 0
-#define SQUARE 1
-#define SAWTOOTH 2
-#define SPECIAL 3
-
 #define BEAT_SIZE 35
 #define TUNING_NOTE 440
 
@@ -123,19 +118,28 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
     
     for(i=0; i<len; i++) {
         *stream = 0;
-        for (j = 0; j < ORG_NUM_TRACKS/2; j++) {
+        for (j = 0; j < ORG_NUM_TRACKS; j++) {
             track_t* cur_track = &org->tracks[j];
             if (j/8 == 0) {
                 *stream += sampler(audio_samples[cur_track->instrument],
                                    SAMPLE_LENGTH, angles[j]) *
                     (float)(cur_track->resources[resource_upto[j]].volume)/254.0;
                 angles[j] += (PI/22050)*frequencies[j]/2;
+                
                 if (angles[j] >= 2.0*PI) {
                     angles[j] -=  2.0*PI;
                 }
-            } else {
+            }/* else {
+                if (resource_upto[j] < cur_track->num_resources && i + org->wait_value *
+                    (current_click - cur_track->resources[resource_upto[j]].start) <
+                    drum_sample_lengths[cur_track->instrument]) {
+                    *stream += drum_samples[cur_track->instrument]
+                        [i + org->wait_value * (current_click -
+                                                cur_track->resources[resource_upto[j]].start)] *
+                        cur_track->resources[resource_upto[j]].volume;
+                }
                 // TODO: Add drum rendering here
-            }
+                }*/
         }
         stream++;
     }
@@ -152,9 +156,9 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
 int sampler(signed char* samples, int length, double angle) {
     // Could overflow the array if angle >= (2*PI)
     if ((int)(angle/(2*PI) * length) >= length) {
-        return (int)(samples[length-1]*0.75);
+        return (int)(samples[length-1] * 0.3);
     } else {
-        return (int)(samples[(int)(angle/(2*PI) * length)]*0.75);
+        return (int)(samples[(int)(angle/(2*PI) * length)] * 0.3);
     }
 }
 
