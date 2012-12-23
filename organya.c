@@ -66,9 +66,34 @@ organya_t* organya_open(const char* filename) {
 }
 
 void organya_delete(organya_t* to_delete) {
+    int t;
     for (t = 0; t < ORG_NUM_TRACKS; t++) {
         free(to_delete->tracks[t].resources);
     }
     free(to_delete);
 }
 
+
+org_session_t* organya_new_session(organya_t* org) {
+    int i;
+    org_session_t* sess = malloc(sizeof(org_session_t));
+    sess->org = org;
+    sess->current_tick = 0;
+    
+    for (i = 0; i < ORG_NUM_TRACKS; i++) {
+        sess->angles[i] = 0;
+        sess->resource_upto[i] = 0;
+    }
+}
+
+void organya_click_session(org_session_t* sess) {
+    int i;
+    sess->current_click++;
+    if (sess->current_click >= sess->org->loop_end) {
+        sess->current_click = sess->org->loop_start;
+        for (i = 0; i < ORG_NUM_TRACKS/2; i++) {
+            sess->resource_upto[i] =
+                sess->org->tracks[i].loop_start_resource;
+        }
+    }
+}

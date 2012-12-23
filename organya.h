@@ -15,6 +15,7 @@ typedef struct resource {
 typedef struct track {
     unsigned char instrument;
     unsigned short num_resources;
+    unsigned int loop_start_resource; // Not assigned yet
     resource_t* resources;
 } track_t;
 
@@ -25,9 +26,17 @@ typedef struct organya {
     track_t tracks[ORG_NUM_TRACKS];
 } organya_t;
 
+typedef struct org_session {
+    double angles[ORG_NUM_TRACKS];
+    unsigned short resource_upto[ORG_NUM_TRACKS];
+    unsigned int current_click;
+    organya_t* org;
+} org_session_t;
+
 organya_t* organya_open(const char* filename);
 void organya_delete(organya_t* to_delete);
 
-
+org_session_t* organya_new_session(organya_t* org);
+void organya_click_session(org_session_t* sess);
 
 #endif // ORGANYA_H
