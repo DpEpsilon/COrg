@@ -10,9 +10,6 @@ void create_tone(void *userdata, Uint8 *stream, int len);
 int sampler(signed char* samples, int length, double angle);
 void read_samples();
 
-int drum_sampler(signed char* samples, int length,
-                 double frequency, int click);
-
 #define BEAT_SIZE 35
 #define TUNING_NOTE 440
 
@@ -31,6 +28,7 @@ int drum_sample_lengths[NUM_DRUM_SAMPLES];
 signed char *drum_samples[NUM_DRUM_SAMPLES];
 
 organya_t* org;
+org_session_t* session;
 
 int main(int argc, char *argv[]) {
     /* Audio Setup */
@@ -44,6 +42,7 @@ int main(int argc, char *argv[]) {
     }        
     
     org = organya_open(argv[1]);
+    session = organya_new_session(org);
     
     desired = (SDL_AudioSpec*)malloc(sizeof(SDL_AudioSpec));
     obtained = (SDL_AudioSpec*)malloc(sizeof(SDL_AudioSpec));
@@ -80,37 +79,22 @@ int main(int argc, char *argv[]) {
 
 int frequencies[ORG_NUM_TRACKS];
 double angles[ORG_NUM_TRACKS];
-int resource_upto[ORG_NUM_TRACKS];
-
-int loop_start_resources[ORG_NUM_TRACKS];
 
 unsigned int current_click = 0;
 
 void create_tone(void *userdata, Uint8 *stream, int len) {
     int i, j;
     for (i = 0; i < ORG_NUM_TRACKS; i++) {
-        track_t* cur_track = &org->tracks[i];
-        
-        if (resource_upto[i] < cur_track->num_resources - 1 &&
-            current_click >= cur_track->resources[resource_upto[i]+1].start) {
-            resource_upto[i]++;
+        resource_t* cur_resource =
+            organya_session_get_resource(session, i);
+
+        if (i >= 8 && cur_resource->start == session->current_click) {
+            angles[i] = 0.0;
         }
         
-        int start = cur_track->resources[resource_upto[i]].start;
-        int end = cur_track->resources[resource_upto[i]].start +
-            cur_track->resources[resource_upto[i]].duration - 1;
-        
-        if (current_click == org->loop_start) {
-            for (j = 0; j < ORG_NUM_TRACKS/2; j++) {
-                loop_start_resources[j] = resource_upto[j];
-            }
-        }
-        
-        if (resource_upto[i] < cur_track->num_resources &&
-            current_click >= start && current_click <= end) {
+        if (organya_session_track_sounding(session, i)) {
             frequencies[i] = TUNING_NOTE *
-                pow(TEMPERAMENT,
-                    (float)(cur_track->resources[resource_upto[i]].note - A440));
+                pow(TEMPERAMENT, (float)(cur_resource->note - A440));
         } else {
             frequencies[i] = 0;
         }
@@ -120,12 +104,18 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
         *stream = 0;
         for (j = 0; j < ORG_NUM_TRACKS; j++) {
             track_t* cur_track = &org->tracks[j];
-            if (j/8 == 0) {
+            resource_t* cur_resource =
+                organya_session_get_resource(session, j);
+            if (j < 8) {
+                //printf("hey %d\n", j);
+                //printf("%d %lf\n", audio_samples[cur_track->instrument][0], angles[j]);
+                //printf("kek\n");
+                //printf("%p\n", cur_resource);
                 int new_value = (signed char)(*stream) +
                     sampler(audio_samples[cur_track->instrument],
                             SAMPLE_LENGTH, angles[j]) *
-                    (float)(cur_track->resources[resource_upto[j]].volume)/254.0;
-
+                    (float)(cur_resource->volume)/254.0;
+                //printf("you\n");                
                 if (new_value > 127) {
                     new_value = 127;
                 } else if (new_value <= -128) {
@@ -133,34 +123,41 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
                 }
                 
                 *stream = new_value;
-                
                 angles[j] += (PI/22050)*frequencies[j]/2;
                 
                 if (angles[j] >= 2.0*PI) {
                     angles[j] -=  2.0*PI;
                 }
-            }/* else {
-                if (resource_upto[j] < cur_track->num_resources && i + org->wait_value *
-                    (current_click - cur_track->resources[resource_upto[j]].start) <
-                    drum_sample_lengths[cur_track->instrument]) {
-                    *stream += drum_samples[cur_track->instrument]
-                        [i + org->wait_value * (current_click -
-                                                cur_track->resources[resource_upto[j]].start)] *
-                        cur_track->resources[resource_upto[j]].volume;
+
+            } else {
+                //printf("li\n");
+                int new_value = (signed char)(*stream) +
+                    sampler(drum_samples[cur_track->instrument],
+                            drum_sample_lengths[cur_track->instrument],
+                            angles[j]) *
+                    (float)(cur_resource->volume)/254.0;
+                
+                if (new_value > 127) {
+                    new_value = 127;
+                } else if (new_value <= -128) {
+                    new_value = -128;
                 }
-                // TODO: Add drum rendering here
-                }*/
+
+                *stream = new_value;
+                
+                angles[j] += (PI/22050)*frequencies[j]/128;
+
+                if (angles[j] > 2.0*PI) {
+                    angles[j] = 2.0*PI;
+                }
+                
+                //printf("%d %lf\n", j, angles[j]);
+            }
         }
         stream++;
     }
 
-    current_click++;
-    if (current_click >= org->loop_end) {
-        current_click = org->loop_start;
-        for (i = 0; i < ORG_NUM_TRACKS/2; i++) {
-            resource_upto[i] = loop_start_resources[i];
-        }
-    }
+    organya_click_session(session);
 }
 
 int sampler(signed char* samples, int length, double angle) {
