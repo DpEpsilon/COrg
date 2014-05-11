@@ -148,10 +148,6 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
                 *stream = new_value;
                 
                 angles[j] += (PI/22050)*frequencies[j]/128;
-
-                if (angles[j] > 2.0*PI) {
-                    angles[j] = 2.0*PI;
-                }
                 
                 //printf("%d %lf\n", j, angles[j]);
             }
@@ -165,8 +161,18 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
 int sampler(signed char* samples, int length, double angle) {
     int start_sample = (int)(angle/(2*PI) * length);
     double leftover = (angle/(2*PI) * length) - start_sample;
-    double interpolated_sample = samples[start_sample] +
-        (samples[start_sample+1]-samples[start_sample])*leftover;
+    if (start_sample >= length) {
+        return 0;
+    }
+    
+    double interpolated_sample;
+    if (start_sample + 1 == length) {
+        interpolated_sample = samples[start_sample] +
+            (samples[start_sample+1]-samples[start_sample])*leftover;
+    } else {
+        interpolated_sample = samples[start_sample];
+    }
+    
     return (int)(interpolated_sample)*0.5;
 }
 
@@ -192,7 +198,7 @@ void read_samples() {
             *((char*)&drum_sample_lengths[i]);
         
         *((char*)&drum_sample_lengths[i]) = swapper;
-
+        
         drum_samples[i] = malloc(sizeof(signed char) *
                                  drum_sample_lengths[i]);
         
