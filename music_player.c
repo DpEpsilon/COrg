@@ -22,6 +22,8 @@ void read_samples();
 #define SAMPLES           100
 #define NUM_DRUM_SAMPLES  28
 
+#define DRUM_PITCH_OFFSET (-5)
+
 signed char *audio_samples[SAMPLES];
 
 int drum_sample_lengths[NUM_DRUM_SAMPLES];
@@ -92,9 +94,9 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
             angles[i] = 0.0;
         }
         
-        if (organya_session_track_sounding(session, i)) {
+        if (organya_session_track_sounding(session, i) || i >= 8) {
             frequencies[i] = TUNING_NOTE *
-                pow(TEMPERAMENT, (float)(cur_resource->note - A440));
+                pow(TEMPERAMENT, (float)(cur_resource->note - A440 + (i >= 8 ? DRUM_PITCH_OFFSET : 0)));
         } else {
             frequencies[i] = 0;
         }
