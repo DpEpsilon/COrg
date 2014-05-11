@@ -109,15 +109,10 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
             resource_t* cur_resource =
                 organya_session_get_resource(session, j);
             if (j < 8) {
-                //printf("hey %d\n", j);
-                //printf("%d %lf\n", audio_samples[cur_track->instrument][0], angles[j]);
-                //printf("kek\n");
-                //printf("%p\n", cur_resource);
                 int new_value = (signed char)(*stream) +
                     sampler(audio_samples[cur_track->instrument],
                             SAMPLE_LENGTH, angles[j]) *
                     (float)(cur_resource->volume)/254.0;
-                //printf("you\n");                
                 if (new_value > 127) {
                     new_value = 127;
                 } else if (new_value <= -128) {
@@ -132,7 +127,6 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
                 }
 
             } else {
-                //printf("li\n");
                 int new_value = (signed char)(*stream) +
                     sampler(drum_samples[cur_track->instrument],
                             drum_sample_lengths[cur_track->instrument],
@@ -149,7 +143,6 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
                 
                 angles[j] += (PI/22050)*frequencies[j]/128;
                 
-                //printf("%d %lf\n", j, angles[j]);
             }
         }
         stream++;
