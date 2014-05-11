@@ -163,10 +163,11 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
 }
 
 int sampler(signed char* samples, int length, double angle) {
-//    if ((int)(angle/(2*PI) * length) >= length) {
-//        return (int)(samples[length-1]);
-    // TODO: linear interpolation
-    return (int)(samples[(int)(angle/(2*PI) * length)]);
+    int start_sample = (int)(angle/(2*PI) * length);
+    double leftover = (angle/(2*PI) * length) - start_sample;
+    double interpolated_sample = samples[start_sample] +
+        (samples[start_sample+1]-samples[start_sample])*leftover;
+    return (int)(interpolated_sample)*0.5;
 }
 
 void read_samples() {
