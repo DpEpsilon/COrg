@@ -14,4 +14,4 @@ ORG_SPECS.txt.
 To Build:
 Requires libsdl (only tested with version 1.2)
 
-$ gcc -Wall -Werror -o music_player music_player.c -lSDL
+$ gcc -Wall -Werror -o music_player music_player.c organya.c -lSDL -lm
