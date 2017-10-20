@@ -1,17 +1,19 @@
+COrg
+====
+
 COrg is a C implementation of the Organya music format used in Cave
 Story by Daisuke "Pixel" Amaya.
-
-It currently supports only melody tracks in the Organya format,
-but will also support drum tracks in the near future.
 
 The end goal is to be able to play any Organya song from the command
 line with full support for both drum and melody tracks as well as
 panning and volume features.
 
 Details of the sample file and the .org format can be found in
-ORG_SPECS.txt.
+doc/ORG_SPECS.txt.
 
-To Build:
-Requires libsdl (only tested with version 1.2)
+Building
+--------
 
-$ gcc -Wall -Werror -o music_player music_player.c organya.c -lSDL -lm
+Requires libsdl and libsdl-mixer version 1.2
+
+    $ make
