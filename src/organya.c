@@ -5,7 +5,7 @@
 organya_t* organya_open(const char* filename) {
     int t, r;
     FILE* file = fopen(filename, "rb");
-    
+
     organya_t *org = malloc(sizeof(organya_t));
 
     fseek(file, 6, SEEK_CUR);
@@ -13,7 +13,7 @@ organya_t* organya_open(const char* filename) {
     fseek(file, 2, SEEK_CUR);
     fread(&org->loop_start, 4, 1, file);
     fread(&org->loop_end, 4, 1, file);
-    
+
     for (t = 0; t < ORG_NUM_TRACKS; t++) {
         fseek(file, 2, SEEK_CUR);
         fread(&org->tracks[t].instrument, 1, 1, file);
@@ -85,12 +85,12 @@ org_session_t* organya_new_session(organya_t* org) {
     org_session_t* sess = malloc(sizeof(org_session_t));
     sess->org = org;
     sess->current_click = 0;
-    
+
     for (i = 0; i < ORG_NUM_TRACKS; i++) {
         sess->angles[i] = 0;
         sess->resource_upto[i] = 0;
     }
-    
+
     return sess;
 }
 
@@ -126,4 +126,3 @@ int organya_session_track_sounding(org_session_t* sess, int track) {
     return sess->resource_upto[track] < sess->org->tracks[track].num_resources &&
         sess->current_click >= start && sess->current_click <= end;
 }
-

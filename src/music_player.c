@@ -5,7 +5,7 @@
 #include "SDL/SDL_mixer.h"
 
 #include "organya.h"
- 
+
 void create_tone(void *userdata, Uint8 *stream, int len);
 int sampler(signed char* samples, int length, double angle);
 void read_samples();
@@ -15,7 +15,7 @@ void read_samples();
 
 #define A440 45
 
-#define TEMPERAMENT 1.0594630943592953 // pow(2.0,1.0/12.0)
+#define TEMPERAMENT 1.0594630943592953 /* = 2^(1/12) */
 #define PI 3.14159265358979323846264
 
 #define SAMPLE_LENGTH     256
@@ -41,43 +41,37 @@ int main(int argc, char *argv[]) {
     if (argc <= 1) {
         fprintf(stderr, "Must supply filename.\n");
         return 1;
-    }        
-    
+    }
+
     org = organya_open(argv[1]);
     session = organya_new_session(org);
-    
+
     desired = (SDL_AudioSpec*)malloc(sizeof(SDL_AudioSpec));
     obtained = (SDL_AudioSpec*)malloc(sizeof(SDL_AudioSpec));
-    
+
     desired->freq=22050;
     desired->format=AUDIO_S16LSB;
-//    desired->format=AUDIO_S8;
     desired->channels=0;
     desired->samples=22050*org->wait_value/500;
     desired->callback=create_tone;
     desired->userdata=NULL;
- 
+
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
- 
+
 	/* Open the audio device */
     if (SDL_OpenAudio(desired, obtained) < 0){
         fprintf(stderr, "Couldn't open audio: %s\n", SDL_GetError());
         return 1;
     }
-    /* desired spec is no longer needed */
-    free(desired);
-    desired=NULL;
- 
+
     SDL_PauseAudio(0);
     getchar();
     SDL_PauseAudio(1);
-    
+
     SDL_Quit();
 
     return EXIT_SUCCESS;
 }
-
-//#include "music.h"
 
 int frequencies[ORG_NUM_TRACKS];
 double angles[ORG_NUM_TRACKS];
@@ -93,7 +87,7 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
         if (i >= 8 && cur_resource->start == session->current_click) {
             angles[i] = 0.0;
         }
-        
+
         if (organya_session_track_sounding(session, i) || i >= 8) {
             frequencies[i] = TUNING_NOTE *
                 pow(TEMPERAMENT, (float)(cur_resource->note - A440 + (i >= 8 ? DRUM_PITCH_OFFSET : 0)));
@@ -101,7 +95,7 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
             frequencies[i] = 0;
         }
     }
-    
+
     for(i=0; i<len; i++) {
         *stream = 0;
         for (j = 0; j < ORG_NUM_TRACKS; j++) {
@@ -118,10 +112,10 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
                 } else if (new_value <= -128) {
                     new_value = -128;
                 }
-                
+
                 *stream = new_value;
                 angles[j] += (PI/22050)*frequencies[j]/2;
-                
+
                 if (angles[j] >= 2.0*PI) {
                     angles[j] -=  2.0*PI;
                 }
@@ -132,7 +126,7 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
                             drum_sample_lengths[cur_track->instrument],
                             angles[j]) *
                     (float)(cur_resource->volume)/254.0;
-                
+
                 if (new_value > 127) {
                     new_value = 127;
                 } else if (new_value <= -128) {
@@ -140,9 +134,9 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
                 }
 
                 *stream = new_value;
-                
+
                 angles[j] += (PI/22050)*frequencies[j]/128;
-                
+
             }
         }
         stream++;
@@ -157,7 +151,7 @@ int sampler(signed char* samples, int length, double angle) {
     if (start_sample >= length) {
         return 0;
     }
-    
+
     double interpolated_sample;
     if (start_sample + 1 == length) {
         interpolated_sample = samples[start_sample] +
@@ -165,7 +159,7 @@ int sampler(signed char* samples, int length, double angle) {
     } else {
         interpolated_sample = samples[start_sample];
     }
-    
+
     return (int)(interpolated_sample)*0.5;
 }
 
@@ -173,11 +167,11 @@ void read_samples() {
     int i;
     FILE* samp_file = fopen("orgsamp.dat", "rb");
     fseek(samp_file, 4, SEEK_CUR);
-        
+
     for (i = 0; i < SAMPLES; i++) {
         audio_samples[i] =
             malloc(SAMPLE_LENGTH * sizeof(signed char));
-        
+
         fread(audio_samples[i], sizeof(signed char),
               SAMPLE_LENGTH, samp_file);
     }
@@ -186,15 +180,15 @@ void read_samples() {
 
         fread(&drum_sample_lengths[i], 3, 1, samp_file);
         char swapper = *(((char*)&drum_sample_lengths[i]) + 2);
-        
+
         *(((char*)&drum_sample_lengths[i]) + 2) =
             *((char*)&drum_sample_lengths[i]);
-        
+
         *((char*)&drum_sample_lengths[i]) = swapper;
-        
+
         drum_samples[i] = malloc(sizeof(signed char) *
                                  drum_sample_lengths[i]);
-        
+
         fread(drum_samples[i], sizeof(signed char),
               drum_sample_lengths[i], samp_file);
     }
