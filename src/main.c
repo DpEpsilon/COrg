@@ -15,6 +15,7 @@ void read_samples();
 
 #define A440 45
 
+#define SAMPLE_FREQUENCY (22050*2)
 #define TEMPERAMENT 1.0594630943592953 /* = 2^(1/12) */
 #define PI 3.14159265358979323846264
 
@@ -49,10 +50,10 @@ int main(int argc, char *argv[]) {
     desired = (SDL_AudioSpec*)malloc(sizeof(SDL_AudioSpec));
     obtained = (SDL_AudioSpec*)malloc(sizeof(SDL_AudioSpec));
 
-    desired->freq=22050;
+    desired->freq=SAMPLE_FREQUENCY;
     desired->format=AUDIO_S16LSB;
     desired->channels=0;
-    desired->samples=22050*org->wait_value/500;
+    desired->samples=SAMPLE_FREQUENCY*org->wait_value/500;
     desired->callback=create_tone;
     desired->userdata=NULL;
 
@@ -114,7 +115,7 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
                 }
 
                 *stream = new_value;
-                angles[j] += (PI/22050)*frequencies[j]/2;
+                angles[j] += (PI/SAMPLE_FREQUENCY)*frequencies[j]/2;
 
                 if (angles[j] >= 2.0*PI) {
                     angles[j] -=  2.0*PI;
@@ -135,7 +136,7 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
 
                 *stream = new_value;
 
-                angles[j] += (PI/22050)*frequencies[j]/128;
+                angles[j] += (PI/SAMPLE_FREQUENCY)*frequencies[j]/128;
 
             }
         }
@@ -160,7 +161,7 @@ int sampler(signed char* samples, int length, double angle) {
         interpolated_sample = samples[start_sample];
     }
 
-    return (int)(interpolated_sample)*0.5;
+    return (int)(interpolated_sample*0.5);
 }
 
 void read_samples() {
