@@ -15,7 +15,7 @@ typedef struct resource {
 typedef struct track {
     unsigned char instrument;
     unsigned short num_resources;
-    unsigned int loop_start_resource; // Not assigned yet
+    unsigned int loop_start_resource;
     resource_t* resources;
 } track_t;
 
