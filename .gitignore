@@ -1,5 +1,6 @@
-# Main executable
-music_player
+# Binaries
+corg
+*.o
 
 # Backup files from vim and emacs
 *~
