@@ -23,7 +23,7 @@ void read_samples();
 #define SAMPLES           100
 #define NUM_DRUM_SAMPLES  28
 
-#define DRUM_PITCH_OFFSET (-5)
+#define DRUM_PITCH_OFFSET (0)
 
 signed char *audio_samples[SAMPLES];
 
