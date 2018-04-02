@@ -89,7 +89,7 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
             angles[i] = 0.0;
         }
 
-        if (organya_session_track_sounding(session, i) || i >= 8) {
+        if (organya_session_track_sounding(session, i) || (i >= 8 && cur_resource->start <= session->current_click)) {
             frequencies[i] = TUNING_NOTE *
                 pow(TEMPERAMENT, (float)(cur_resource->note - A440 + (i >= 8 ? DRUM_PITCH_OFFSET : 0)));
         } else {
