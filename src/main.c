@@ -161,7 +161,7 @@ int sampler(signed char* samples, int length, double angle) {
         interpolated_sample = samples[start_sample];
     }
 
-    return (int)(interpolated_sample*0.5);
+    return (int)(interpolated_sample);
 }
 
 void read_samples() {
