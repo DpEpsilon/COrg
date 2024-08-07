@@ -14,6 +14,6 @@ doc/ORG_SPECS.txt.
 Building
 --------
 
-Requires libsdl and libsdl-mixer version 1.2
+Requires libsdl and libsdl-mixer version 2
 
     $ make

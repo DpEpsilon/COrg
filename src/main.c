@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include "SDL/SDL.h"
-#include "SDL/SDL_mixer.h"
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_mixer.h>
 
 #include "organya.h"
 
@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
     desired->freq=SAMPLE_FREQUENCY;
     desired->format=AUDIO_S16LSB;
     desired->channels=0;
-    desired->samples=SAMPLE_FREQUENCY*org->wait_value/500;
+    desired->samples=SAMPLE_FREQUENCY*org->wait_value/1000;
     desired->callback=create_tone;
     desired->userdata=NULL;
 
