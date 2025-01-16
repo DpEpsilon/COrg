@@ -1,6 +1,6 @@
 CC=gcc
 CFLAGS=-Wall -iquote include/
-LDFLAGS=-lSDL -lm
+LDFLAGS=-lSDL2 -lm
 
 all: corg
 
