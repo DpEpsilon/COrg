@@ -134,7 +134,7 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
                     angles[j] -=  2.0*PI;
                 }
 
-            } else {
+            } else if (cur_resource->start <= session->current_click) {
                 int new_value = (signed char)(*stream) +
                     drum_sampler(drum_samples[cur_track->instrument],
                                  drum_sample_lengths[cur_track->instrument],
