@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
 
     desired->freq=SAMPLE_FREQUENCY;
     desired->format=AUDIO_S16LSB;
-    desired->channels=0;
+    desired->channels=2;
     desired->samples=SAMPLE_FREQUENCY*org->wait_value/1000;
     desired->callback=create_tone;
     desired->userdata=NULL;
