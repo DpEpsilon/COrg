@@ -158,20 +158,15 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
 
 int sampler(signed char* samples, int length, double angle) {
     int start_sample = (int)(angle/(2*PI) * length);
+    int next_sample;
     double leftover = (angle/(2*PI) * length) - start_sample;
     if (start_sample >= length) {
         return 0;
     }
 
-    double interpolated_sample;
-    if (start_sample + 1 == length) {
-        interpolated_sample = samples[start_sample] +
-            (samples[start_sample+1]-samples[start_sample])*leftover;
-    } else {
-        interpolated_sample = samples[start_sample];
-    }
-
-    return (int)(interpolated_sample);
+    next_sample = (start_sample + 1) % length;
+    return samples[start_sample] +
+        (samples[next_sample] - samples[start_sample]) * leftover;
 }
 
 int drum_sampler(signed char* samples, int length, double position) {
