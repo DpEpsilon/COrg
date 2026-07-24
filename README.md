@@ -11,18 +11,11 @@ panning and volume features.
 Details of the sample file and the .org format can be found in
 doc/ORG_SPECS.txt.
 
+I spent a small portion of a bus ride getting GPT 5.6 Sol to fix the issue with the drums, so after over a decade, this implementation finally works.
+
 Building
 --------
 
 Requires libsdl and libsdl-mixer version 2
 
     $ make
-
-Known Issues
-------------
-
-Drum samples are not played back accurately.
-
-I wrote this when I was in high school more than a decade ago.
-Occasionally I dig it up but I don't know whether it will keep my
-attention long enough to debug this issue.

@@ -8,6 +8,7 @@
 
 void create_tone(void *userdata, Uint8 *stream, int len);
 int sampler(signed char* samples, int length, double angle);
+int drum_sampler(signed char* samples, int length, double position);
 void read_samples();
 
 #define BEAT_SIZE 35
@@ -29,6 +30,8 @@ signed char *audio_samples[SAMPLES];
 
 int drum_sample_lengths[NUM_DRUM_SAMPLES];
 signed char *drum_samples[NUM_DRUM_SAMPLES];
+int drum_sample_frequency;
+int output_frame_size;
 
 organya_t* org;
 org_session_t* session;
@@ -64,6 +67,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Couldn't open audio: %s\n", SDL_GetError());
         return 1;
     }
+    output_frame_size = obtained->size / obtained->samples;
 
     SDL_PauseAudio(0);
     getchar();
@@ -85,7 +89,8 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
         resource_t* cur_resource =
             organya_session_get_resource(session, i);
 
-        if (i >= 8 && cur_resource->start == session->current_click) {
+        if (i >= 8 && cur_resource->note != ORG_NO_CHANGE &&
+            cur_resource->start == session->current_click) {
             angles[i] = 0.0;
         }
 
@@ -123,9 +128,9 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
 
             } else {
                 int new_value = (signed char)(*stream) +
-                    sampler(drum_samples[cur_track->instrument],
-                            drum_sample_lengths[cur_track->instrument],
-                            angles[j]) *
+                    drum_sampler(drum_samples[cur_track->instrument],
+                                 drum_sample_lengths[cur_track->instrument],
+                                 angles[j]) *
                     (float)(cur_resource->volume)/254.0;
 
                 if (new_value > 127) {
@@ -136,7 +141,9 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
 
                 *stream = new_value;
 
-                angles[j] += (PI/SAMPLE_FREQUENCY)*frequencies[j]/128;
+                angles[j] +=
+                    (double)cur_resource->note * drum_sample_frequency /
+                    (SAMPLE_FREQUENCY * output_frame_size);
 
             }
         }
@@ -164,8 +171,22 @@ int sampler(signed char* samples, int length, double angle) {
     return (int)(interpolated_sample);
 }
 
+int drum_sampler(signed char* samples, int length, double position) {
+    int start_sample = (int)position;
+    double leftover = position - start_sample;
+    if (start_sample >= length) {
+        return 0;
+    }
+    if (start_sample + 1 >= length) {
+        return samples[start_sample];
+    }
+    return samples[start_sample] +
+        (samples[start_sample+1] - samples[start_sample]) * leftover;
+}
+
 void read_samples() {
     int i;
+    unsigned char drum_header[3];
     FILE* samp_file = fopen("orgsamp.dat", "rb");
     fseek(samp_file, 4, SEEK_CUR);
 
@@ -176,7 +197,8 @@ void read_samples() {
         fread(audio_samples[i], sizeof(signed char),
               SAMPLE_LENGTH, samp_file);
     }
-    fseek(samp_file, 3, SEEK_CUR);
+    fread(drum_header, 1, sizeof(drum_header), samp_file);
+    drum_sample_frequency = drum_header[1] * 256 + drum_header[2];
     for (i = 0; i < NUM_DRUM_SAMPLES; i++) {
 
         fread(&drum_sample_lengths[i], 3, 1, samp_file);
