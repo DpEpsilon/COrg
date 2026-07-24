@@ -89,6 +89,11 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
         resource_t* cur_resource =
             organya_session_get_resource(session, i);
 
+        if (cur_resource == NULL) {
+            frequencies[i] = 0;
+            continue;
+        }
+
         if (i >= 8 && cur_resource->note != ORG_NO_CHANGE &&
             cur_resource->start == session->current_click) {
             angles[i] = 0.0;
@@ -108,6 +113,9 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
             track_t* cur_track = &org->tracks[j];
             resource_t* cur_resource =
                 organya_session_get_resource(session, j);
+            if (cur_resource == NULL) {
+                continue;
+            }
             if (j < 8) {
                 int new_value = (signed char)(*stream) +
                     sampler(audio_samples[cur_track->instrument],

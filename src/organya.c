@@ -100,8 +100,12 @@ void organya_click_session(org_session_t* sess) {
     if (sess->current_click >= sess->org->loop_end) {
         sess->current_click = sess->org->loop_start;
         for (i = 0; i < ORG_NUM_TRACKS; i++) {
-            sess->resource_upto[i] =
-                sess->org->tracks[i].loop_start_resource;
+            if (sess->org->tracks[i].num_resources > 0) {
+                sess->resource_upto[i] =
+                    sess->org->tracks[i].loop_start_resource;
+            } else {
+                sess->resource_upto[i] = 0;
+            }
         }
     }
 
@@ -116,11 +120,18 @@ void organya_click_session(org_session_t* sess) {
 }
 
 resource_t* organya_session_get_resource(org_session_t* sess, int track) {
+    if (sess->resource_upto[track] >=
+        sess->org->tracks[track].num_resources) {
+        return NULL;
+    }
     return &(sess->org->tracks[track].resources[sess->resource_upto[track]]);
 }
 
 int organya_session_track_sounding(org_session_t* sess, int track) {
     resource_t* cur_resource = organya_session_get_resource(sess, track);
+    if (cur_resource == NULL) {
+        return 0;
+    }
     int start = cur_resource->start;
     int end = cur_resource->start + cur_resource->duration - 1;
     return sess->resource_upto[track] < sess->org->tracks[track].num_resources &&
