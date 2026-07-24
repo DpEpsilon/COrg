@@ -31,7 +31,6 @@ signed char *audio_samples[SAMPLES];
 int drum_sample_lengths[NUM_DRUM_SAMPLES];
 signed char *drum_samples[NUM_DRUM_SAMPLES];
 int drum_sample_frequency;
-int output_frame_size;
 
 organya_t* org;
 org_session_t* session;
@@ -54,7 +53,7 @@ int main(int argc, char *argv[]) {
     obtained = (SDL_AudioSpec*)malloc(sizeof(SDL_AudioSpec));
 
     desired->freq=SAMPLE_FREQUENCY;
-    desired->format=AUDIO_S16LSB;
+    desired->format=AUDIO_S16SYS;
     desired->channels=2;
     desired->samples=SAMPLE_FREQUENCY*org->wait_value/1000;
     desired->callback=create_tone;
@@ -67,8 +66,6 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Couldn't open audio: %s\n", SDL_GetError());
         return 1;
     }
-    output_frame_size = obtained->size / obtained->samples;
-
     SDL_PauseAudio(0);
     getchar();
     SDL_PauseAudio(1);
@@ -85,6 +82,9 @@ unsigned int current_click = 0;
 
 void create_tone(void *userdata, Uint8 *stream, int len) {
     int i, j;
+    int frame_count = len / (sizeof(Sint16) * 2);
+    Sint16 *output = (Sint16 *)stream;
+
     for (i = 0; i < ORG_NUM_TRACKS; i++) {
         resource_t* cur_resource =
             organya_session_get_resource(session, i);
@@ -107,9 +107,11 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
         }
     }
 
-    for(i=0; i<len; i++) {
-        *stream = 0;
+    for(i = 0; i < frame_count; i++) {
+        int mixed_sample = 0;
+
         for (j = 0; j < ORG_NUM_TRACKS; j++) {
+            int track_sample;
             track_t* cur_track = &org->tracks[j];
             resource_t* cur_resource =
                 organya_session_get_resource(session, j);
@@ -117,45 +119,38 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
                 continue;
             }
             if (j < 8) {
-                int new_value = (signed char)(*stream) +
+                track_sample =
                     sampler(audio_samples[cur_track->instrument],
-                            SAMPLE_LENGTH, angles[j]) *
-                    (float)(cur_resource->volume)/254.0;
-                if (new_value > 127) {
-                    new_value = 127;
-                } else if (new_value <= -128) {
-                    new_value = -128;
-                }
-
-                *stream = new_value;
-                angles[j] += (PI/SAMPLE_FREQUENCY)*frequencies[j]/2;
+                            SAMPLE_LENGTH, angles[j]);
+                angles[j] += (2 * PI / SAMPLE_FREQUENCY) * frequencies[j];
 
                 if (angles[j] >= 2.0*PI) {
                     angles[j] -=  2.0*PI;
                 }
 
             } else if (cur_resource->start <= session->current_click) {
-                int new_value = (signed char)(*stream) +
+                track_sample =
                     drum_sampler(drum_samples[cur_track->instrument],
                                  drum_sample_lengths[cur_track->instrument],
-                                 angles[j]) *
-                    (float)(cur_resource->volume)/254.0;
-
-                if (new_value > 127) {
-                    new_value = 127;
-                } else if (new_value <= -128) {
-                    new_value = -128;
-                }
-
-                *stream = new_value;
-
+                                 angles[j]);
                 angles[j] +=
                     (double)cur_resource->note * drum_sample_frequency /
-                    (SAMPLE_FREQUENCY * output_frame_size);
+                    SAMPLE_FREQUENCY;
+            } else {
+                continue;
+            }
 
+            mixed_sample +=
+                track_sample * (float)(cur_resource->volume) / 254.0;
+            if (mixed_sample > 127) {
+                mixed_sample = 127;
+            } else if (mixed_sample <= -128) {
+                mixed_sample = -128;
             }
         }
-        stream++;
+
+        output[i * 2] = mixed_sample * 256;
+        output[i * 2 + 1] = mixed_sample * 256;
     }
 
     organya_click_session(session);
