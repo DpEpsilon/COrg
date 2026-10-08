@@ -42,6 +42,7 @@ organya_t* organya_open(const char* filename);
 void organya_delete(organya_t* to_delete);
 
 org_session_t* organya_new_session(organya_t* org);
+void organya_delete_session(org_session_t* session);
 void organya_click_session(org_session_t* sess);
 resource_t* organya_session_get_resource(org_session_t* sess, int track);
 int organya_session_track_sounding(org_session_t* sess, int track);

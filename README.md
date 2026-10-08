@@ -16,6 +16,6 @@ I spent a small portion of a bus ride getting GPT 5.6 Sol to fix the issue with 
 Building
 --------
 
-Requires libsdl and libsdl-mixer version 2
+Requires SDL 2
 
     $ make

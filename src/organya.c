@@ -206,6 +206,10 @@ org_session_t* organya_new_session(organya_t* org) {
     return sess;
 }
 
+void organya_delete_session(org_session_t* session) {
+    free(session);
+}
+
 void organya_click_session(org_session_t* sess) {
     int i;
     sess->current_click++;

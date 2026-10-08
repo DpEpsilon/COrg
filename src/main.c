@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <math.h>
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_mixer.h>
 
 #include "organya.h"
 
@@ -10,10 +9,10 @@ void create_tone(void *userdata, Uint8 *stream, int len);
 int sampler(signed char* samples, int length, double angle);
 int drum_sampler(signed char* samples, int length, double position);
 int read_samples(void);
+void free_samples(void);
 double melody_frequency(const track_t* track, unsigned char note);
 int clamp_sample(int sample);
 
-#define BEAT_SIZE 35
 #define TUNING_NOTE 440
 
 #define A440 45
@@ -37,34 +36,37 @@ org_session_t* session;
 
 int main(int argc, char *argv[]) {
     /* Audio Setup */
+    int audio_open = 0;
+    int sdl_initialized = 0;
+    int status = EXIT_FAILURE;
     unsigned int samples_per_click;
     SDL_AudioSpec desired = {0};
     SDL_AudioSpec obtained = {0};
 
     if (argc <= 1) {
         fprintf(stderr, "Must supply filename.\n");
-        return 1;
+        goto cleanup;
     }
 
     if (read_samples() != 0) {
-        return 1;
+        goto cleanup;
     }
 
     org = organya_open(argv[1]);
     if (org == NULL) {
-        return 1;
+        goto cleanup;
     }
     session = organya_new_session(org);
     if (session == NULL) {
         fprintf(stderr, "Could not allocate playback session.\n");
-        return 1;
+        goto cleanup;
     }
 
     samples_per_click =
         (unsigned int)SAMPLE_FREQUENCY * org->wait_value / 1000;
     if (samples_per_click == 0 || samples_per_click > 65535) {
         fprintf(stderr, "Organya wait value is out of range.\n");
-        return 1;
+        goto cleanup;
     }
 
     desired.freq = SAMPLE_FREQUENCY;
@@ -75,30 +77,41 @@ int main(int argc, char *argv[]) {
 
     if (SDL_Init(SDL_INIT_AUDIO) < 0) {
         fprintf(stderr, "Could not initialize SDL: %s\n", SDL_GetError());
-        return 1;
+        goto cleanup;
     }
+    sdl_initialized = 1;
 
 	/* Open the audio device */
     if (SDL_OpenAudio(&desired, &obtained) < 0){
         fprintf(stderr, "Couldn't open audio: %s\n", SDL_GetError());
-        SDL_Quit();
-        return 1;
+        goto cleanup;
     }
+    audio_open = 1;
     if (obtained.freq != desired.freq ||
         obtained.format != desired.format ||
         obtained.channels != desired.channels) {
         fprintf(stderr, "SDL opened an unsupported audio format.\n");
-        SDL_CloseAudio();
-        SDL_Quit();
-        return 1;
+        goto cleanup;
     }
     SDL_PauseAudio(0);
     getchar();
     SDL_PauseAudio(1);
+    status = EXIT_SUCCESS;
 
-    SDL_Quit();
+cleanup:
+    if (audio_open) {
+        SDL_CloseAudio();
+    }
+    if (sdl_initialized) {
+        SDL_Quit();
+    }
+    organya_delete_session(session);
+    session = NULL;
+    organya_delete(org);
+    org = NULL;
+    free_samples();
 
-    return EXIT_SUCCESS;
+    return status;
 }
 
 void create_tone(void *userdata, Uint8 *stream, int len) {
@@ -311,6 +324,13 @@ int read_samples(void) {
 invalid_file:
     fprintf(stderr, "Invalid or truncated sample file: orgsamp.dat\n");
     fclose(samp_file);
+    free_samples();
+    return -1;
+}
+
+void free_samples(void) {
+    int i;
+
     for (i = 0; i < SAMPLES; i++) {
         free(audio_samples[i]);
         audio_samples[i] = NULL;
@@ -318,6 +338,7 @@ invalid_file:
     for (i = 0; i < NUM_DRUM_SAMPLES; i++) {
         free(drum_samples[i]);
         drum_samples[i] = NULL;
+        drum_sample_lengths[i] = 0;
     }
-    return -1;
+    drum_sample_frequency = 0;
 }
