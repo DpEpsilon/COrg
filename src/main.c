@@ -6,11 +6,19 @@
 #include "organya.h"
 
 void create_tone(void *userdata, Uint8 *stream, int len);
-static void render_frames(Sint16 *output, int frame_count);
-static void start_click(void);
-static unsigned int next_click_length(void);
-int sampler(signed char* samples, int length, double angle);
-int drum_sampler(signed char* samples, int length, double position);
+static void render_frames(org_session_t* session, Sint16 *output,
+                          int frame_count);
+static void advance_click(org_session_t* session);
+static unsigned int next_click_length(org_session_t* session);
+static double voice_sample(const org_session_t* session, int track);
+static double voice_step(const org_session_t* session, int track);
+static int voice_audible(const org_session_t* session, int track);
+static void voice_gains(const resource_t* resource,
+                        double* left, double* right);
+static void advance_voice(org_voice_t* voice, int track, double step);
+static void trigger_voice(org_session_t* session, int track);
+double sampler(signed char* samples, int length, double angle);
+double drum_sampler(signed char* samples, int length, double position);
 int read_samples(void);
 void free_samples(void);
 double melody_frequency(const track_t* track, unsigned char note);
@@ -32,20 +40,20 @@ Sint16 clamp_sample(double sample);
 /* Master gain applied to the 16-bit mix before clamping. */
 #define MIX_GAIN 0.7
 
+/* Time constant, in seconds, for smoothing voice gains and decaying
+   the offsets that hide waveform jumps when a voice is retriggered. */
+#define DECLICK_TIME 0.002
+
 signed char *audio_samples[SAMPLES];
 
 int drum_sample_lengths[NUM_DRUM_SAMPLES];
 signed char *drum_samples[NUM_DRUM_SAMPLES];
 int drum_sample_frequency;
 
-organya_t* org;
-org_session_t* session;
-static unsigned int frames_until_click;
-static unsigned int click_frame_remainder;
-static int click_started;
-
 int main(int argc, char *argv[]) {
     /* Audio Setup */
+    organya_t* org = NULL;
+    org_session_t* session = NULL;
     int audio_open = 0;
     int sdl_initialized = 0;
     int status = EXIT_FAILURE;
@@ -70,12 +78,14 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Could not allocate playback session.\n");
         goto cleanup;
     }
+    session->frames_until_click = next_click_length(session);
 
     desired.freq = SAMPLE_FREQUENCY;
     desired.format = AUDIO_S16SYS;
     desired.channels = 2;
     desired.samples = AUDIO_BUFFER_FRAMES;
     desired.callback = create_tone;
+    desired.userdata = session;
 
     if (SDL_Init(SDL_INIT_AUDIO) < 0) {
         fprintf(stderr, "Could not initialize SDL: %s\n", SDL_GetError());
@@ -117,98 +127,69 @@ cleanup:
 }
 
 void create_tone(void *userdata, Uint8 *stream, int len) {
+    org_session_t* session = userdata;
     int frame_offset = 0;
     int frame_count = len / (sizeof(Sint16) * 2);
     Sint16 *output = (Sint16 *)stream;
 
-    (void)userdata;
-
     while (frame_offset < frame_count) {
-        int frames_to_render;
+        int frames_to_render = frame_count - frame_offset;
 
-        if (frames_until_click == 0) {
-            start_click();
-            frames_until_click = next_click_length();
+        if (frames_to_render > (int)session->frames_until_click) {
+            frames_to_render = session->frames_until_click;
         }
-        frames_to_render = frame_count - frame_offset;
-        if (frames_to_render > (int)frames_until_click) {
-            frames_to_render = frames_until_click;
-        }
-
-        render_frames(output + frame_offset * 2, frames_to_render);
+        render_frames(session, output + frame_offset * 2, frames_to_render);
         frame_offset += frames_to_render;
-        frames_until_click -= frames_to_render;
+        session->frames_until_click -= frames_to_render;
+        if (session->frames_until_click == 0) {
+            advance_click(session);
+        }
     }
 }
 
-static void render_frames(Sint16 *output, int frame_count) {
+static void render_frames(org_session_t* session, Sint16 *output,
+                          int frame_count) {
+    const double decay = exp(-1.0 / (DECLICK_TIME * SAMPLE_FREQUENCY));
+    double steps[ORG_NUM_TRACKS];
+    double target_left[ORG_NUM_TRACKS];
+    double target_right[ORG_NUM_TRACKS];
     int i, j;
-    double frequencies[8] = {0};
 
-    for (i = 0; i < 8; i++) {
-        track_t* track = &org->tracks[i];
-        resource_t* cur_resource =
-            organya_session_get_resource(session, i);
+    for (j = 0; j < ORG_NUM_TRACKS; j++) {
+        resource_t* resource = organya_session_get_resource(session, j);
 
-        if (cur_resource != NULL &&
-            organya_session_track_sounding(session, i)) {
-            frequencies[i] = melody_frequency(track, cur_resource->note);
+        steps[j] = target_left[j] = target_right[j] = 0.0;
+        if (resource != NULL) {
+            steps[j] = voice_step(session, j);
+            voice_gains(resource, &target_left[j], &target_right[j]);
         }
     }
 
-    for(i = 0; i < frame_count; i++) {
+    for (i = 0; i < frame_count; i++) {
         double mixed_left = 0.0;
         double mixed_right = 0.0;
 
         for (j = 0; j < ORG_NUM_TRACKS; j++) {
-            double left_gain, right_gain;
-            int track_sample;
-            track_t* cur_track = &org->tracks[j];
-            resource_t* cur_resource =
-                organya_session_get_resource(session, j);
-            if (cur_resource == NULL) {
+            org_voice_t* voice = &session->voices[j];
+            int audible;
+            double sample;
+
+            if (organya_session_get_resource(session, j) == NULL) {
                 continue;
             }
-            if (j < 8) {
-                double pi_limit = 4.0 * (cur_resource->note / 12 + 1);
+            audible = voice_audible(session, j);
+            voice->gain_left += (1.0 - decay) *
+                ((audible ? target_left[j] : 0.0) - voice->gain_left);
+            voice->gain_right += (1.0 - decay) *
+                ((audible ? target_right[j] : 0.0) - voice->gain_right);
 
-                if (!organya_session_track_sounding(session, j) ||
-                    (cur_track->pi && session->pi_cycles[j] >= pi_limit)) {
-                    continue;
-                }
-                track_sample =
-                    sampler(audio_samples[cur_track->instrument],
-                            SAMPLE_LENGTH, session->angles[j]);
-                session->angles[j] +=
-                    (2 * PI / SAMPLE_FREQUENCY) * frequencies[j];
-                if (cur_track->pi) {
-                    session->pi_cycles[j] += frequencies[j] / SAMPLE_FREQUENCY;
-                }
+            sample = voice_sample(session, j) + voice->declick_offset;
+            voice->declick_offset *= decay;
+            voice->last_sample = sample;
+            advance_voice(voice, j, steps[j]);
 
-                if (session->angles[j] >= 2.0*PI) {
-                    session->angles[j] -=  2.0*PI;
-                }
-
-            } else if (cur_resource->start <= session->current_click) {
-                track_sample =
-                    drum_sampler(drum_samples[cur_track->instrument],
-                                 drum_sample_lengths[cur_track->instrument],
-                                 session->angles[j]);
-                session->angles[j] +=
-                    (double)cur_resource->note * drum_sample_frequency /
-                    SAMPLE_FREQUENCY;
-            } else {
-                continue;
-            }
-
-            left_gain = cur_resource->pan <= 6
-                ? 1.0 : (12 - cur_resource->pan) / 6.0;
-            right_gain = cur_resource->pan >= 6
-                ? 1.0 : cur_resource->pan / 6.0;
-            mixed_left += track_sample * 256.0 * cur_resource->volume /
-                254.0 * left_gain;
-            mixed_right += track_sample * 256.0 * cur_resource->volume /
-                254.0 * right_gain;
+            mixed_left += sample * 256.0 * voice->gain_left;
+            mixed_right += sample * 256.0 * voice->gain_right;
         }
 
         output[i * 2] = clamp_sample(mixed_left * MIX_GAIN);
@@ -216,40 +197,100 @@ static void render_frames(Sint16 *output, int frame_count) {
     }
 }
 
-static void start_click(void) {
+static void advance_click(org_session_t* session) {
     int i;
 
-    if (click_started) {
-        organya_click_session(session);
-    } else {
-        click_started = 1;
-    }
-
+    organya_click_session(session);
     for (i = 0; i < ORG_NUM_TRACKS; i++) {
-        resource_t* cur_resource =
-            organya_session_get_resource(session, i);
+        resource_t* resource = organya_session_get_resource(session, i);
 
-        if (cur_resource != NULL && cur_resource->triggers_note &&
-            cur_resource->start == session->current_click) {
-            session->angles[i] = 0.0;
-            if (i < 8) {
-                session->pi_cycles[i] = 0.0;
-            }
+        if (resource != NULL && resource->triggers_note &&
+            resource->start == session->current_click) {
+            trigger_voice(session, i);
+        }
+    }
+    session->frames_until_click = next_click_length(session);
+}
+
+static unsigned int next_click_length(org_session_t* session) {
+    unsigned long numerator =
+        (unsigned long)SAMPLE_FREQUENCY * session->org->wait_value;
+    unsigned int frames = numerator / 1000;
+
+    session->click_frame_remainder += numerator % 1000;
+    if (session->click_frame_remainder >= 1000) {
+        frames++;
+        session->click_frame_remainder -= 1000;
+    }
+    return frames;
+}
+
+/* The track's waveform at the voice's current position, before gain and
+   declick offset. */
+static double voice_sample(const org_session_t* session, int track) {
+    int instrument = session->org->tracks[track].instrument;
+    double angle = session->voices[track].angle;
+
+    if (track < 8) {
+        return sampler(audio_samples[instrument], SAMPLE_LENGTH, angle);
+    }
+    return drum_sampler(drum_samples[instrument],
+                        drum_sample_lengths[instrument], angle);
+}
+
+/* How far the voice's position moves per output frame: radians for
+   melody tracks, drum sample positions for drum tracks. */
+static double voice_step(const org_session_t* session, int track) {
+    const track_t* cur_track = &session->org->tracks[track];
+    const resource_t* resource = organya_session_get_resource(session, track);
+
+    if (track < 8) {
+        return (2 * PI / SAMPLE_FREQUENCY) *
+            melody_frequency(cur_track, resource->note);
+    }
+    return (double)resource->note * drum_sample_frequency / SAMPLE_FREQUENCY;
+}
+
+static int voice_audible(const org_session_t* session, int track) {
+    const resource_t* resource = organya_session_get_resource(session, track);
+
+    if (track < 8) {
+        double pi_limit = 4.0 * (resource->note / 12 + 1);
+
+        return organya_session_track_sounding(session, track) &&
+            !(session->org->tracks[track].pi &&
+              session->voices[track].pi_cycles >= pi_limit);
+    }
+    return resource->start <= session->current_click;
+}
+
+/* Left and right gains for a resource's volume and pan. */
+static void voice_gains(const resource_t* resource,
+                        double* left, double* right) {
+    double volume = resource->volume / 254.0;
+
+    *left = volume * (resource->pan <= 6 ? 1.0 : (12 - resource->pan) / 6.0);
+    *right = volume * (resource->pan >= 6 ? 1.0 : resource->pan / 6.0);
+}
+
+static void advance_voice(org_voice_t* voice, int track, double step) {
+    voice->angle += step;
+    if (track < 8) {
+        voice->pi_cycles += step / (2.0 * PI);
+        if (voice->angle >= 2.0 * PI) {
+            voice->angle -= 2.0 * PI;
         }
     }
 }
 
-static unsigned int next_click_length(void) {
-    unsigned long numerator =
-        (unsigned long)SAMPLE_FREQUENCY * org->wait_value;
-    unsigned int frames = numerator / 1000;
+/* Restart the voice's waveform, carrying the jump between its last output
+   and the new waveform's first sample as an offset that decays away. */
+static void trigger_voice(org_session_t* session, int track) {
+    org_voice_t* voice = &session->voices[track];
 
-    click_frame_remainder += numerator % 1000;
-    if (click_frame_remainder >= 1000) {
-        frames++;
-        click_frame_remainder -= 1000;
-    }
-    return frames;
+    voice->angle = 0.0;
+    voice->pi_cycles = 0.0;
+    voice->declick_offset = voice->last_sample - voice_sample(session, track);
 }
 
 double melody_frequency(const track_t* track, unsigned char note) {
@@ -271,7 +312,7 @@ Sint16 clamp_sample(double sample) {
     return (Sint16)lround(sample);
 }
 
-int sampler(signed char* samples, int length, double angle) {
+double sampler(signed char* samples, int length, double angle) {
     int start_sample = (int)(angle/(2*PI) * length);
     int next_sample;
     double leftover = (angle/(2*PI) * length) - start_sample;
@@ -284,7 +325,7 @@ int sampler(signed char* samples, int length, double angle) {
         (samples[next_sample] - samples[start_sample]) * leftover;
 }
 
-int drum_sampler(signed char* samples, int length, double position) {
+double drum_sampler(signed char* samples, int length, double position) {
     int start_sample = (int)position;
     double leftover = position - start_sample;
     if (start_sample >= length) {

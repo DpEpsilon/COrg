@@ -30,11 +30,21 @@ typedef struct organya {
     track_t tracks[ORG_NUM_TRACKS];
 } organya_t;
 
+typedef struct org_voice {
+    double angle;
+    double pi_cycles;
+    double gain_left;
+    double gain_right;
+    double last_sample;
+    double declick_offset;
+} org_voice_t;
+
 typedef struct org_session {
-    double angles[ORG_NUM_TRACKS];
-    double pi_cycles[8];
+    org_voice_t voices[ORG_NUM_TRACKS];
     unsigned short resource_upto[ORG_NUM_TRACKS];
     unsigned int current_click;
+    unsigned int frames_until_click;
+    unsigned int click_frame_remainder;
     organya_t* org;
 } org_session_t;
 
@@ -44,7 +54,8 @@ void organya_delete(organya_t* to_delete);
 org_session_t* organya_new_session(organya_t* org);
 void organya_delete_session(org_session_t* session);
 void organya_click_session(org_session_t* sess);
-resource_t* organya_session_get_resource(org_session_t* sess, int track);
-int organya_session_track_sounding(org_session_t* sess, int track);
+resource_t* organya_session_get_resource(const org_session_t* sess,
+                                         int track);
+int organya_session_track_sounding(const org_session_t* sess, int track);
 
 #endif // ORGANYA_H
