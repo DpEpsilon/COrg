@@ -9,7 +9,7 @@
 void create_tone(void *userdata, Uint8 *stream, int len);
 int sampler(signed char* samples, int length, double angle);
 int drum_sampler(signed char* samples, int length, double position);
-void read_samples();
+int read_samples(void);
 
 #define BEAT_SIZE 35
 #define TUNING_NOTE 440
@@ -37,33 +37,59 @@ org_session_t* session;
 
 int main(int argc, char *argv[]) {
     /* Audio Setup */
-    SDL_AudioSpec *desired, *obtained;
-
-    read_samples();
+    unsigned int samples_per_click;
+    SDL_AudioSpec desired = {0};
+    SDL_AudioSpec obtained = {0};
 
     if (argc <= 1) {
         fprintf(stderr, "Must supply filename.\n");
         return 1;
     }
 
+    if (read_samples() != 0) {
+        return 1;
+    }
+
     org = organya_open(argv[1]);
+    if (org == NULL) {
+        return 1;
+    }
     session = organya_new_session(org);
+    if (session == NULL) {
+        fprintf(stderr, "Could not allocate playback session.\n");
+        return 1;
+    }
 
-    desired = (SDL_AudioSpec*)malloc(sizeof(SDL_AudioSpec));
-    obtained = (SDL_AudioSpec*)malloc(sizeof(SDL_AudioSpec));
+    samples_per_click =
+        (unsigned int)SAMPLE_FREQUENCY * org->wait_value / 1000;
+    if (samples_per_click == 0 || samples_per_click > 65535) {
+        fprintf(stderr, "Organya wait value is out of range.\n");
+        return 1;
+    }
 
-    desired->freq=SAMPLE_FREQUENCY;
-    desired->format=AUDIO_S16SYS;
-    desired->channels=2;
-    desired->samples=SAMPLE_FREQUENCY*org->wait_value/1000;
-    desired->callback=create_tone;
-    desired->userdata=NULL;
+    desired.freq = SAMPLE_FREQUENCY;
+    desired.format = AUDIO_S16SYS;
+    desired.channels = 2;
+    desired.samples = samples_per_click;
+    desired.callback = create_tone;
 
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
+    if (SDL_Init(SDL_INIT_AUDIO) < 0) {
+        fprintf(stderr, "Could not initialize SDL: %s\n", SDL_GetError());
+        return 1;
+    }
 
 	/* Open the audio device */
-    if (SDL_OpenAudio(desired, obtained) < 0){
+    if (SDL_OpenAudio(&desired, &obtained) < 0){
         fprintf(stderr, "Couldn't open audio: %s\n", SDL_GetError());
+        SDL_Quit();
+        return 1;
+    }
+    if (obtained.freq != desired.freq ||
+        obtained.format != desired.format ||
+        obtained.channels != desired.channels) {
+        fprintf(stderr, "SDL opened an unsupported audio format.\n");
+        SDL_CloseAudio();
+        SDL_Quit();
         return 1;
     }
     SDL_PauseAudio(0);
@@ -182,35 +208,86 @@ int drum_sampler(signed char* samples, int length, double position) {
         (samples[start_sample+1] - samples[start_sample]) * leftover;
 }
 
-void read_samples() {
-    int i;
-    unsigned char drum_header[3];
+static int read_sample_bytes(FILE* file, void* destination, size_t size) {
+    return fread(destination, 1, size, file) == size;
+}
+
+static int read_be16(FILE* file, int* value) {
+    unsigned char bytes[2];
+
+    if (!read_sample_bytes(file, bytes, sizeof(bytes))) {
+        return 0;
+    }
+    *value = (bytes[0] << 8) | bytes[1];
+    return 1;
+}
+
+static int read_be24(FILE* file, int* value) {
+    unsigned char bytes[3];
+
+    if (!read_sample_bytes(file, bytes, sizeof(bytes))) {
+        return 0;
+    }
+    *value = (bytes[0] << 16) | (bytes[1] << 8) | bytes[2];
+    return 1;
+}
+
+int read_samples(void) {
+    int i, melody_count, melody_length, drum_count;
     FILE* samp_file = fopen("orgsamp.dat", "rb");
-    fseek(samp_file, 4, SEEK_CUR);
+
+    if (samp_file == NULL) {
+        perror("orgsamp.dat");
+        return -1;
+    }
+    melody_count = fgetc(samp_file);
+    if (melody_count != SAMPLES ||
+        !read_be24(samp_file, &melody_length) ||
+        melody_length != SAMPLE_LENGTH) {
+        goto invalid_file;
+    }
 
     for (i = 0; i < SAMPLES; i++) {
-        audio_samples[i] =
-            malloc(SAMPLE_LENGTH * sizeof(signed char));
-
-        fread(audio_samples[i], sizeof(signed char),
-              SAMPLE_LENGTH, samp_file);
+        audio_samples[i] = malloc(SAMPLE_LENGTH * sizeof(*audio_samples[i]));
+        if (audio_samples[i] == NULL ||
+            !read_sample_bytes(samp_file, audio_samples[i], SAMPLE_LENGTH)) {
+            goto invalid_file;
+        }
     }
-    fread(drum_header, 1, sizeof(drum_header), samp_file);
-    drum_sample_frequency = drum_header[1] * 256 + drum_header[2];
+
+    drum_count = fgetc(samp_file);
+    if (drum_count != NUM_DRUM_SAMPLES ||
+        !read_be16(samp_file, &drum_sample_frequency) ||
+        drum_sample_frequency == 0) {
+        goto invalid_file;
+    }
+
     for (i = 0; i < NUM_DRUM_SAMPLES; i++) {
-
-        fread(&drum_sample_lengths[i], 3, 1, samp_file);
-        char swapper = *(((char*)&drum_sample_lengths[i]) + 2);
-
-        *(((char*)&drum_sample_lengths[i]) + 2) =
-            *((char*)&drum_sample_lengths[i]);
-
-        *((char*)&drum_sample_lengths[i]) = swapper;
-
-        drum_samples[i] = malloc(sizeof(signed char) *
-                                 drum_sample_lengths[i]);
-
-        fread(drum_samples[i], sizeof(signed char),
-              drum_sample_lengths[i], samp_file);
+        if (!read_be24(samp_file, &drum_sample_lengths[i]) ||
+            drum_sample_lengths[i] == 0) {
+            goto invalid_file;
+        }
+        drum_samples[i] = malloc(drum_sample_lengths[i] *
+                                 sizeof(*drum_samples[i]));
+        if (drum_samples[i] == NULL ||
+            !read_sample_bytes(samp_file, drum_samples[i],
+                               drum_sample_lengths[i])) {
+            goto invalid_file;
+        }
     }
+    fclose(samp_file);
+    return 0;
+
+invalid_file:
+    fprintf(stderr, "Invalid or truncated sample file: orgsamp.dat\n");
+    fclose(samp_file);
+    for (i = 0; i < SAMPLES; i++) {
+        free(audio_samples[i]);
+        audio_samples[i] = NULL;
+    }
+    for (i = 0; i < NUM_DRUM_SAMPLES; i++) {
+        free(drum_samples[i]);
+        drum_samples[i] = NULL;
+    }
+    return -1;
 }
