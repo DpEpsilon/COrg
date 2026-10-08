@@ -22,15 +22,13 @@ organya_t* organya_open(const char* filename) {
     }
 
     for (t = 0; t < ORG_NUM_TRACKS; t++) {
-        int loop_start_assigned = 0;
+        org->tracks[t].loop_start_resource = 0;
         org->tracks[t].resources =
             malloc(sizeof(resource_t) * org->tracks[t].num_resources);
         for (r = 0; r < org->tracks[t].num_resources; r++) {
             fread(&org->tracks[t].resources[r].start, 4, 1, file);
-            if (!loop_start_assigned &&
-                org->tracks[t].resources[r].start >= org->loop_start) {
+            if (org->tracks[t].resources[r].start <= org->loop_start) {
                 org->tracks[t].loop_start_resource = r;
-                loop_start_assigned = 1;
             }
         }
         for (r = 0; r < org->tracks[t].num_resources; r++) {
