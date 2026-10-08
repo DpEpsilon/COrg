@@ -68,7 +68,6 @@ int main(int argc, char *argv[]) {
     int sdl_initialized = 0;
     int status = EXIT_FAILURE;
     SDL_AudioSpec desired = {0};
-    SDL_AudioSpec obtained = {0};
 
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-l") == 0 ||
@@ -117,18 +116,13 @@ int main(int argc, char *argv[]) {
     }
     sdl_initialized = 1;
 
-	/* Open the audio device */
-    if (SDL_OpenAudio(&desired, &obtained) < 0){
+	/* Open the audio device. With no obtained spec, SDL converts from
+	   the desired format to whatever the device actually uses. */
+    if (SDL_OpenAudio(&desired, NULL) < 0){
         fprintf(stderr, "Couldn't open audio: %s\n", SDL_GetError());
         goto cleanup;
     }
     audio_open = 1;
-    if (obtained.freq != desired.freq ||
-        obtained.format != desired.format ||
-        obtained.channels != desired.channels) {
-        fprintf(stderr, "SDL opened an unsupported audio format.\n");
-        goto cleanup;
-    }
     SDL_PauseAudio(0);
     getchar();
     SDL_PauseAudio(1);
