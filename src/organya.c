@@ -39,8 +39,9 @@ organya_t* organya_open(const char* filename) {
         for (r = 0; r < org->tracks[t].num_resources; r++) {
             if (org->tracks[t].resources[r].note == ORG_NO_CHANGE) {
                 fseek(file, 1, SEEK_CUR);
-                org->tracks[t].resources[r].duration =
-                    org->tracks[t].resources[r-1].duration;
+                org->tracks[t].resources[r].duration = r > 0
+                    ? org->tracks[t].resources[r-1].duration
+                    : 0;
             } else {
                 fread(&org->tracks[t].resources[r].duration, 1, 1, file);
             }
@@ -48,22 +49,25 @@ organya_t* organya_open(const char* filename) {
         for (r = 0; r < org->tracks[t].num_resources; r++) {
             fread(&org->tracks[t].resources[r].volume, 1, 1, file);
             if (org->tracks[t].resources[r].volume == ORG_NO_CHANGE) {
-                org->tracks[t].resources[r].volume =
-                    org->tracks[t].resources[r-1].volume;
+                org->tracks[t].resources[r].volume = r > 0
+                    ? org->tracks[t].resources[r-1].volume
+                    : 0;
             }
         }
         for (r = 0; r < org->tracks[t].num_resources; r++) {
             fread(&org->tracks[t].resources[r].pan, 1, 1, file);
             if (org->tracks[t].resources[r].pan == ORG_NO_CHANGE) {
-                org->tracks[t].resources[r].pan =
-                    org->tracks[t].resources[r-1].pan;
+                org->tracks[t].resources[r].pan = r > 0
+                    ? org->tracks[t].resources[r-1].pan
+                    : 6;
             }
         }
 
         for (r = 0; r < org->tracks[t].num_resources; r++) {
             if (org->tracks[t].resources[r].note == ORG_NO_CHANGE) {
-                org->tracks[t].resources[r].note =
-                    org->tracks[t].resources[r-1].note;
+                org->tracks[t].resources[r].note = r > 0
+                    ? org->tracks[t].resources[r-1].note
+                    : 0;
             }
         }
     }
