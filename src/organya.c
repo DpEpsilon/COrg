@@ -186,22 +186,12 @@ void organya_delete(organya_t* to_delete) {
 }
 
 org_session_t* organya_new_session(organya_t* org) {
-    int i;
-    org_session_t* sess = malloc(sizeof(*sess));
+    org_session_t* sess = calloc(1, sizeof(*sess));
 
     if (sess == NULL) {
         return NULL;
     }
     sess->org = org;
-    sess->current_click = 0;
-
-    for (i = 0; i < ORG_NUM_TRACKS; i++) {
-        sess->angles[i] = 0;
-        sess->resource_upto[i] = 0;
-        if (i < 8) {
-            sess->pi_cycles[i] = 0;
-        }
-    }
 
     return sess;
 }
@@ -235,7 +225,8 @@ void organya_click_session(org_session_t* sess) {
     }
 }
 
-resource_t* organya_session_get_resource(org_session_t* sess, int track) {
+resource_t* organya_session_get_resource(const org_session_t* sess,
+                                         int track) {
     if (sess->resource_upto[track] >=
         sess->org->tracks[track].num_resources) {
         return NULL;
@@ -243,7 +234,7 @@ resource_t* organya_session_get_resource(org_session_t* sess, int track) {
     return &(sess->org->tracks[track].resources[sess->resource_upto[track]]);
 }
 
-int organya_session_track_sounding(org_session_t* sess, int track) {
+int organya_session_track_sounding(const org_session_t* sess, int track) {
     resource_t* cur_resource = organya_session_get_resource(sess, track);
     unsigned int end;
 
