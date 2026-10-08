@@ -8,7 +8,7 @@ LDFLAGS=-lSDL2 -lm
 # an SDL2-devel-*-mingw release.
 WIN_CC=x86_64-w64-mingw32-gcc
 WIN_LIBS=-lm -ldinput8 -ldxguid -ldxerr8 -luser32 -lgdi32 -lwinmm -limm32 \
-	-lole32 -loleaut32 -lshell32 -lsetupapi -lversion -luuid
+	-lole32 -loleaut32 -lshell32 -lsetupapi -lversion -luuid -lcomdlg32
 
 all: corg
 
@@ -18,18 +18,20 @@ clean:
 	rm -f src/*.o
 	rm -f corg corg.exe
 
-corg:    src/organya.o src/main.o
+corg:    src/organya.o src/dialogs.o src/main.o
 	$(CC) $(CFLAGS) -o corg src/*.o $(LDFLAGS)
 
 src/%.o: src/%.c include/%.h
 
 # main.c builds orgsamp.dat into the binary with #embed.
-src/main.o: src/main.c include/organya.h orgsamp.dat
+src/main.o: src/main.c include/organya.h include/dialogs.h orgsamp.dat
 
-corg.exe: src/organya.c src/main.c include/organya.h orgsamp.dat
+corg.exe: src/organya.c src/dialogs.c src/main.c include/organya.h \
+		include/dialogs.h orgsamp.dat
 	$(if $(SDL2_MINGW),,$(error Set SDL2_MINGW to an SDL2 MinGW dev directory))
 	$(WIN_CC) $(CFLAGS) -Os -ffunction-sections -fdata-sections \
-		-I$(SDL2_MINGW)/include -o corg.exe src/organya.c src/main.c \
+		-I$(SDL2_MINGW)/include -o corg.exe \
+		src/organya.c src/dialogs.c src/main.c \
 		-static -s -Wl,--gc-sections $(SDL2_MINGW)/lib/libSDL2.a \
 		$(WIN_LIBS)
 

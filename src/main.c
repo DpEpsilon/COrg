@@ -6,6 +6,7 @@
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 
+#include "dialogs.h"
 #include "organya.h"
 
 void create_tone(void *userdata, Uint8 *stream, int len);
@@ -70,7 +71,10 @@ int main(int argc, char *argv[]) {
     organya_t* org = NULL;
     org_session_t* session = NULL;
     const char* filename = NULL;
+    char chosen_filename[4096];
     int lowpass = 0;
+    int bad_args = 0;
+    int from_dialog = 0;
     int i;
     int audio_open = 0;
     int sdl_initialized = 0;
@@ -82,13 +86,18 @@ int main(int argc, char *argv[]) {
             strcmp(argv[i], "--lowpass") == 0) {
             lowpass = 1;
         } else if (argv[i][0] == '-' || filename != NULL) {
-            filename = NULL;
-            break;
+            bad_args = 1;
         } else {
             filename = argv[i];
         }
     }
-    if (filename == NULL) {
+    /* With no song given, ask for one where there's a file dialog. */
+    if (!bad_args && filename == NULL &&
+        choose_org_file(chosen_filename, sizeof(chosen_filename))) {
+        filename = chosen_filename;
+        from_dialog = 1;
+    }
+    if (bad_args || filename == NULL) {
         fprintf(stderr, "Usage: %s [-l|--lowpass] FILE.org\n", argv[0]);
         goto cleanup;
     }
@@ -133,7 +142,11 @@ int main(int argc, char *argv[]) {
     }
     audio_open = 1;
     SDL_PauseAudio(0);
-    getchar();
+    /* A song picked from a dialog is stopped from a dialog too. */
+    if (!from_dialog || !show_playing_dialog(filename)) {
+        printf("Playing %s. Press Enter to stop.\n", filename);
+        getchar();
+    }
     SDL_PauseAudio(1);
     status = EXIT_SUCCESS;
 
