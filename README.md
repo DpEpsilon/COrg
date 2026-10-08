@@ -11,7 +11,11 @@ panning and volume features.
 Details of the sample file and the .org format can be found in
 doc/ORG_SPECS.txt.
 
-I spent a small portion of a bus ride getting GPT 5.6 Sol to fix the issue with the drums, so after over a decade, this implementation finally works.
+You may have come across this implementation before, and it was a bit
+broken and lacking certain features. Now with the help of GPT 5.6 Sol
+and Claude Opus 5.5, it's working quite well and pretty feature
+complete. I originally wrote this in high school and wasn't really
+interested in sinking too much time into fixing the drum issue.
 
 Building
 --------
@@ -19,3 +23,11 @@ Building
 Requires SDL 2
 
     $ make
+
+Running
+-------
+
+    $ ./corg [--lowpass|-l] path/to/song.org
+
+The --lowpass/-l flag tells COrg to apply a fixed lowpass filter to
+soften the harsh square and sawtooth waves.
