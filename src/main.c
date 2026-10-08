@@ -14,7 +14,7 @@ int drum_sampler(signed char* samples, int length, double position);
 int read_samples(void);
 void free_samples(void);
 double melody_frequency(const track_t* track, unsigned char note);
-int clamp_sample(int sample);
+Sint16 clamp_sample(double sample);
 
 #define TUNING_NOTE 440
 
@@ -28,6 +28,9 @@ int clamp_sample(int sample);
 #define SAMPLES           100
 #define NUM_DRUM_SAMPLES  28
 #define AUDIO_BUFFER_FRAMES  1024
+
+/* Master gain applied to the 16-bit mix before clamping. */
+#define MIX_GAIN 1.0
 
 signed char *audio_samples[SAMPLES];
 
@@ -154,8 +157,8 @@ static void render_frames(Sint16 *output, int frame_count) {
     }
 
     for(i = 0; i < frame_count; i++) {
-        int mixed_left = 0;
-        int mixed_right = 0;
+        double mixed_left = 0.0;
+        double mixed_right = 0.0;
 
         for (j = 0; j < ORG_NUM_TRACKS; j++) {
             double left_gain, right_gain;
@@ -202,14 +205,14 @@ static void render_frames(Sint16 *output, int frame_count) {
                 ? 1.0 : (12 - cur_resource->pan) / 6.0;
             right_gain = cur_resource->pan >= 6
                 ? 1.0 : cur_resource->pan / 6.0;
-            mixed_left += track_sample * cur_resource->volume /
+            mixed_left += track_sample * 256.0 * cur_resource->volume /
                 254.0 * left_gain;
-            mixed_right += track_sample * cur_resource->volume /
+            mixed_right += track_sample * 256.0 * cur_resource->volume /
                 254.0 * right_gain;
         }
 
-        output[i * 2] = clamp_sample(mixed_left) * 256;
-        output[i * 2 + 1] = clamp_sample(mixed_right) * 256;
+        output[i * 2] = clamp_sample(mixed_left * MIX_GAIN);
+        output[i * 2 + 1] = clamp_sample(mixed_right * MIX_GAIN);
     }
 }
 
@@ -258,14 +261,14 @@ double melody_frequency(const track_t* track, unsigned char note) {
         ((int)track->frequency - 1000) / (double)wave_sizes[note / 12];
 }
 
-int clamp_sample(int sample) {
-    if (sample > 127) {
-        return 127;
+Sint16 clamp_sample(double sample) {
+    if (sample > 32767.0) {
+        return 32767;
     }
-    if (sample < -128) {
-        return -128;
+    if (sample < -32768.0) {
+        return -32768;
     }
-    return sample;
+    return (Sint16)lround(sample);
 }
 
 int sampler(signed char* samples, int length, double angle) {
