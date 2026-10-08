@@ -24,6 +24,30 @@ Requires SDL 2
 
     $ make
 
+### Windows (INSTRUCTIONS UNTESTED!!!)
+
+`make windows` builds a self-contained corg.exe with SDL 2 linked
+statically, so no DLLs need to be shipped alongside it. SDL2_MINGW
+points at a directory containing SDL 2's include/ and lib/libSDL2.a.
+
+On Windows, install MSYS2 (https://www.msys2.org), open the
+"MSYS2 UCRT64" shell, and install the compiler, SDL 2 and make:
+
+    $ pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-SDL2 make
+
+Then, from the COrg directory:
+
+    $ make windows WIN_CC=gcc SDL2_MINGW=/ucrt64
+
+To cross-compile from Linux, install MinGW-w64 (mingw64-gcc on
+Fedora), download SDL2-devel-2.x.x-mingw.tar.gz from
+https://github.com/libsdl-org/SDL/releases, extract it, and run:
+
+    $ make windows SDL2_MINGW=path/to/SDL2-2.x.x/x86_64-w64-mingw32
+
+corg.exe looks for orgsamp.dat in the current directory, so run it
+from the folder that contains it.
+
 Running
 -------
 

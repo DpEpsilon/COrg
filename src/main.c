@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+/* Use our own main rather than SDL's, so no SDL2main is needed on Windows. */
+#define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 
 #include "organya.h"
@@ -110,6 +112,7 @@ int main(int argc, char *argv[]) {
     desired.callback = create_tone;
     desired.userdata = session;
 
+    SDL_SetMainReady();
     if (SDL_Init(SDL_INIT_AUDIO) < 0) {
         fprintf(stderr, "Could not initialize SDL: %s\n", SDL_GetError());
         goto cleanup;
