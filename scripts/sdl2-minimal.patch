@@ -1,0 +1,57 @@
+--- a/src/audio/SDL_audio.c
++++ b/src/audio/SDL_audio.c
+@@ -26,6 +26,11 @@
+ #include "SDL_audio.h"
+ #include "SDL_audio_c.h"
+ #include "SDL_sysaudio.h"
++
++#if SDL_EVENTS_DISABLED /* COrg: no event queue, so never report device events */
++#undef SDL_GetEventState
++#define SDL_GetEventState(type) SDL_IGNORE
++#endif
+ #include "../thread/SDL_systhread.h"
+ #include "../SDL_utils_c.h"
+ 
+--- a/src/dynapi/SDL_dynapi.h
++++ b/src/dynapi/SDL_dynapi.h
+@@ -43,7 +43,9 @@
+ #include "TargetConditionals.h"
+ #endif
+ 
+-#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE /* probably not useful on iOS. */
++#if 1 /* COrg: static-only build, no dynamic API */
++#define SDL_DYNAMIC_API 0
++#elif defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+ #define SDL_DYNAMIC_API 0
+ #elif defined(__ANDROID__) /* probably not useful on Android. */
+ #define SDL_DYNAMIC_API 0
+--- a/src/SDL_assert.c
++++ b/src/SDL_assert.c
+@@ -32,6 +32,12 @@
+ #include "SDL_assert_c.h"
+ #include "video/SDL_sysvideo.h"
+ 
++#if SDL_VIDEO_DISABLED /* COrg: no windows or message boxes, report assertions on stdio */
++#define SDL_GetFocusWindow() NULL
++#define SDL_ShowMessageBox(data, button) (-1)
++#define SDL_ShowSimpleMessageBox(flags, title, message, window) (-1)
++#endif
++
+ #if defined(__WIN32__) || defined(__GDK__)
+ #ifndef WS_OVERLAPPEDWINDOW
+ #define WS_OVERLAPPEDWINDOW 0
+--- a/src/SDL.c
++++ b/src/SDL.c
+@@ -290,10 +290,12 @@
+     if (flags & SDL_INIT_AUDIO) {
+ #ifndef SDL_AUDIO_DISABLED
+         if (SDL_PrivateShouldInitSubsystem(SDL_INIT_AUDIO)) {
++#ifndef SDL_EVENTS_DISABLED /* COrg: audio works without an event queue */
+             /* audio implies events */
+             if (!SDL_PrivateInitOrIncrSubsystem(SDL_INIT_EVENTS)) {
+                 goto quit_and_error;
+             }
++#endif
+ 
+             if (SDL_AudioInit(NULL) < 0) {
+                 goto quit_and_error;

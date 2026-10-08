@@ -23,10 +23,10 @@ static void trigger_voice(org_session_t* session, int track);
 static void lowpass_init(org_lowpass_t* lowpass, double cutoff);
 static double lowpass_process(org_lowpass_t* lowpass, int channel,
                               double input);
-double sampler(signed char* samples, int length, double angle);
-double drum_sampler(signed char* samples, int length, double position);
+double sampler(const signed char* samples, int length, double angle);
+double drum_sampler(const signed char* samples, int length,
+                    double position);
 int read_samples(void);
-void free_samples(void);
 double melody_frequency(const track_t* track, unsigned char note);
 Sint16 clamp_sample(double sample);
 
@@ -53,10 +53,16 @@ Sint16 clamp_sample(double sample);
 /* Cutoff, in Hz, of the optional output low-pass filter. */
 #define LOWPASS_FREQUENCY 17000.0
 
-signed char *audio_samples[SAMPLES];
+/* The instrument and drum sample bank, built into the binary. */
+static const unsigned char orgsamp[] = {
+#embed "../orgsamp.dat"
+};
+
+/* Pointers into orgsamp, set up by read_samples. */
+const signed char *audio_samples[SAMPLES];
 
 int drum_sample_lengths[NUM_DRUM_SAMPLES];
-signed char *drum_samples[NUM_DRUM_SAMPLES];
+const signed char *drum_samples[NUM_DRUM_SAMPLES];
 int drum_sample_frequency;
 
 int main(int argc, char *argv[]) {
@@ -142,7 +148,6 @@ cleanup:
     session = NULL;
     organya_delete(org);
     org = NULL;
-    free_samples();
 
     return status;
 }
@@ -367,7 +372,7 @@ Sint16 clamp_sample(double sample) {
     return (Sint16)lround(sample);
 }
 
-double sampler(signed char* samples, int length, double angle) {
+double sampler(const signed char* samples, int length, double angle) {
     int start_sample = (int)(angle/(2*PI) * length);
     int next_sample;
     double leftover = (angle/(2*PI) * length) - start_sample;
@@ -380,7 +385,8 @@ double sampler(signed char* samples, int length, double angle) {
         (samples[next_sample] - samples[start_sample]) * leftover;
 }
 
-double drum_sampler(signed char* samples, int length, double position) {
+double drum_sampler(const signed char* samples, int length,
+                    double position) {
     int start_sample = (int)position;
     double leftover = position - start_sample;
     if (start_sample >= length) {
@@ -393,24 +399,42 @@ double drum_sampler(signed char* samples, int length, double position) {
         (samples[start_sample+1] - samples[start_sample]) * leftover;
 }
 
-static int read_sample_bytes(FILE* file, void* destination, size_t size) {
-    return fread(destination, 1, size, file) == size;
+/* Returns the next size bytes of orgsamp after *offset and advances
+   *offset past them, or returns NULL if there are not enough left. */
+static const unsigned char* take_bytes(size_t* offset, size_t size) {
+    const unsigned char* bytes = orgsamp + *offset;
+
+    if (size > sizeof(orgsamp) - *offset) {
+        return NULL;
+    }
+    *offset += size;
+    return bytes;
 }
 
-static int read_be16(FILE* file, int* value) {
-    unsigned char bytes[2];
+static int take_u8(size_t* offset, int* value) {
+    const unsigned char* bytes = take_bytes(offset, 1);
 
-    if (!read_sample_bytes(file, bytes, sizeof(bytes))) {
+    if (bytes == NULL) {
+        return 0;
+    }
+    *value = bytes[0];
+    return 1;
+}
+
+static int take_be16(size_t* offset, int* value) {
+    const unsigned char* bytes = take_bytes(offset, 2);
+
+    if (bytes == NULL) {
         return 0;
     }
     *value = (bytes[0] << 8) | bytes[1];
     return 1;
 }
 
-static int read_be24(FILE* file, int* value) {
-    unsigned char bytes[3];
+static int take_be24(size_t* offset, int* value) {
+    const unsigned char* bytes = take_bytes(offset, 3);
 
-    if (!read_sample_bytes(file, bytes, sizeof(bytes))) {
+    if (bytes == NULL) {
         return 0;
     }
     *value = (bytes[0] << 16) | (bytes[1] << 8) | bytes[2];
@@ -419,68 +443,42 @@ static int read_be24(FILE* file, int* value) {
 
 int read_samples(void) {
     int i, melody_count, melody_length, drum_count;
-    FILE* samp_file = fopen("orgsamp.dat", "rb");
+    size_t offset = 0;
 
-    if (samp_file == NULL) {
-        perror("orgsamp.dat");
-        return -1;
-    }
-    melody_count = fgetc(samp_file);
-    if (melody_count != SAMPLES ||
-        !read_be24(samp_file, &melody_length) ||
+    if (!take_u8(&offset, &melody_count) || melody_count != SAMPLES ||
+        !take_be24(&offset, &melody_length) ||
         melody_length != SAMPLE_LENGTH) {
-        goto invalid_file;
+        goto invalid_data;
     }
 
     for (i = 0; i < SAMPLES; i++) {
-        audio_samples[i] = malloc(SAMPLE_LENGTH * sizeof(*audio_samples[i]));
-        if (audio_samples[i] == NULL ||
-            !read_sample_bytes(samp_file, audio_samples[i], SAMPLE_LENGTH)) {
-            goto invalid_file;
+        audio_samples[i] =
+            (const signed char*)take_bytes(&offset, SAMPLE_LENGTH);
+        if (audio_samples[i] == NULL) {
+            goto invalid_data;
         }
     }
 
-    drum_count = fgetc(samp_file);
-    if (drum_count != NUM_DRUM_SAMPLES ||
-        !read_be16(samp_file, &drum_sample_frequency) ||
+    if (!take_u8(&offset, &drum_count) || drum_count != NUM_DRUM_SAMPLES ||
+        !take_be16(&offset, &drum_sample_frequency) ||
         drum_sample_frequency == 0) {
-        goto invalid_file;
+        goto invalid_data;
     }
 
     for (i = 0; i < NUM_DRUM_SAMPLES; i++) {
-        if (!read_be24(samp_file, &drum_sample_lengths[i]) ||
+        if (!take_be24(&offset, &drum_sample_lengths[i]) ||
             drum_sample_lengths[i] == 0) {
-            goto invalid_file;
+            goto invalid_data;
         }
-        drum_samples[i] = malloc(drum_sample_lengths[i] *
-                                 sizeof(*drum_samples[i]));
-        if (drum_samples[i] == NULL ||
-            !read_sample_bytes(samp_file, drum_samples[i],
-                               drum_sample_lengths[i])) {
-            goto invalid_file;
+        drum_samples[i] =
+            (const signed char*)take_bytes(&offset, drum_sample_lengths[i]);
+        if (drum_samples[i] == NULL) {
+            goto invalid_data;
         }
     }
-    fclose(samp_file);
     return 0;
 
-invalid_file:
-    fprintf(stderr, "Invalid or truncated sample file: orgsamp.dat\n");
-    fclose(samp_file);
-    free_samples();
+invalid_data:
+    fprintf(stderr, "Invalid or truncated built-in sample data.\n");
     return -1;
-}
-
-void free_samples(void) {
-    int i;
-
-    for (i = 0; i < SAMPLES; i++) {
-        free(audio_samples[i]);
-        audio_samples[i] = NULL;
-    }
-    for (i = 0; i < NUM_DRUM_SAMPLES; i++) {
-        free(drum_samples[i]);
-        drum_samples[i] = NULL;
-        drum_sample_lengths[i] = 0;
-    }
-    drum_sample_frequency = 0;
 }
