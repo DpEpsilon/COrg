@@ -30,7 +30,7 @@ Sint16 clamp_sample(double sample);
 #define AUDIO_BUFFER_FRAMES  1024
 
 /* Master gain applied to the 16-bit mix before clamping. */
-#define MIX_GAIN 1.0
+#define MIX_GAIN 0.7
 
 signed char *audio_samples[SAMPLES];
 
