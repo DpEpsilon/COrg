@@ -6,6 +6,9 @@
 #include "organya.h"
 
 void create_tone(void *userdata, Uint8 *stream, int len);
+static void render_frames(Sint16 *output, int frame_count);
+static void start_click(void);
+static unsigned int next_click_length(void);
 int sampler(signed char* samples, int length, double angle);
 int drum_sampler(signed char* samples, int length, double position);
 int read_samples(void);
@@ -24,6 +27,7 @@ int clamp_sample(int sample);
 #define SAMPLE_LENGTH     256
 #define SAMPLES           100
 #define NUM_DRUM_SAMPLES  28
+#define AUDIO_BUFFER_FRAMES  1024
 
 signed char *audio_samples[SAMPLES];
 
@@ -33,13 +37,15 @@ int drum_sample_frequency;
 
 organya_t* org;
 org_session_t* session;
+static unsigned int frames_until_click;
+static unsigned int click_frame_remainder;
+static int click_started;
 
 int main(int argc, char *argv[]) {
     /* Audio Setup */
     int audio_open = 0;
     int sdl_initialized = 0;
     int status = EXIT_FAILURE;
-    unsigned int samples_per_click;
     SDL_AudioSpec desired = {0};
     SDL_AudioSpec obtained = {0};
 
@@ -62,17 +68,10 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    samples_per_click =
-        (unsigned int)SAMPLE_FREQUENCY * org->wait_value / 1000;
-    if (samples_per_click == 0 || samples_per_click > 65535) {
-        fprintf(stderr, "Organya wait value is out of range.\n");
-        goto cleanup;
-    }
-
     desired.freq = SAMPLE_FREQUENCY;
     desired.format = AUDIO_S16SYS;
     desired.channels = 2;
-    desired.samples = samples_per_click;
+    desired.samples = AUDIO_BUFFER_FRAMES;
     desired.callback = create_tone;
 
     if (SDL_Init(SDL_INIT_AUDIO) < 0) {
@@ -115,31 +114,41 @@ cleanup:
 }
 
 void create_tone(void *userdata, Uint8 *stream, int len) {
-    int i, j;
+    int frame_offset = 0;
     int frame_count = len / (sizeof(Sint16) * 2);
-    double frequencies[8] = {0};
     Sint16 *output = (Sint16 *)stream;
 
     (void)userdata;
 
-    for (i = 0; i < ORG_NUM_TRACKS; i++) {
+    while (frame_offset < frame_count) {
+        int frames_to_render;
+
+        if (frames_until_click == 0) {
+            start_click();
+            frames_until_click = next_click_length();
+        }
+        frames_to_render = frame_count - frame_offset;
+        if (frames_to_render > (int)frames_until_click) {
+            frames_to_render = frames_until_click;
+        }
+
+        render_frames(output + frame_offset * 2, frames_to_render);
+        frame_offset += frames_to_render;
+        frames_until_click -= frames_to_render;
+    }
+}
+
+static void render_frames(Sint16 *output, int frame_count) {
+    int i, j;
+    double frequencies[8] = {0};
+
+    for (i = 0; i < 8; i++) {
         track_t* track = &org->tracks[i];
         resource_t* cur_resource =
             organya_session_get_resource(session, i);
 
-        if (cur_resource == NULL) {
-            continue;
-        }
-
-        if (cur_resource->triggers_note &&
-            cur_resource->start == session->current_click) {
-            session->angles[i] = 0.0;
-            if (i < 8) {
-                session->pi_cycles[i] = 0.0;
-            }
-        }
-
-        if (i < 8 && organya_session_track_sounding(session, i)) {
+        if (cur_resource != NULL &&
+            organya_session_track_sounding(session, i)) {
             frequencies[i] = melody_frequency(track, cur_resource->note);
         }
     }
@@ -202,8 +211,42 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
         output[i * 2] = clamp_sample(mixed_left) * 256;
         output[i * 2 + 1] = clamp_sample(mixed_right) * 256;
     }
+}
 
-    organya_click_session(session);
+static void start_click(void) {
+    int i;
+
+    if (click_started) {
+        organya_click_session(session);
+    } else {
+        click_started = 1;
+    }
+
+    for (i = 0; i < ORG_NUM_TRACKS; i++) {
+        resource_t* cur_resource =
+            organya_session_get_resource(session, i);
+
+        if (cur_resource != NULL && cur_resource->triggers_note &&
+            cur_resource->start == session->current_click) {
+            session->angles[i] = 0.0;
+            if (i < 8) {
+                session->pi_cycles[i] = 0.0;
+            }
+        }
+    }
+}
+
+static unsigned int next_click_length(void) {
+    unsigned long numerator =
+        (unsigned long)SAMPLE_FREQUENCY * org->wait_value;
+    unsigned int frames = numerator / 1000;
+
+    click_frame_remainder += numerator % 1000;
+    if (click_frame_remainder >= 1000) {
+        frames++;
+        click_frame_remainder -= 1000;
+    }
+    return frames;
 }
 
 double melody_frequency(const track_t* track, unsigned char note) {
