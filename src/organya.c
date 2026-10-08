@@ -39,7 +39,6 @@ organya_t* organya_open(const char* filename) {
     char signature[6];
     int t, r;
     unsigned char ignored_u8;
-    unsigned short ignored_u16;
     FILE* file = fopen(filename, "rb");
     organya_t* org;
 
@@ -69,10 +68,12 @@ organya_t* organya_open(const char* filename) {
     for (t = 0; t < ORG_NUM_TRACKS; t++) {
         track_t* track = &org->tracks[t];
 
-        if (!read_le16(file, &ignored_u16) ||
+        if (!read_le16(file, &track->frequency) ||
             !read_u8(file, &track->instrument) ||
-            !read_u8(file, &ignored_u8) ||
+            !read_u8(file, &track->pi) ||
             !read_le16(file, &track->num_resources) ||
+            track->frequency < 100 || track->frequency > 1900 ||
+            track->pi > 1 ||
             (t < 8 && track->instrument >= 100) ||
             (t >= 8 && track->instrument >= 28)) {
             goto invalid_file;
@@ -109,6 +110,12 @@ organya_t* organya_open(const char* filename) {
                  track->resources[r].note != ORG_NO_CHANGE)) {
                 goto invalid_file;
             }
+            track->resources[r].triggers_note =
+                track->resources[r].note != ORG_NO_CHANGE;
+            track->resources[r].note_start =
+                track->resources[r].triggers_note || r == 0
+                ? track->resources[r].start
+                : track->resources[r-1].note_start;
         }
 
         for (r = 0; r < track->num_resources; r++) {
@@ -191,6 +198,9 @@ org_session_t* organya_new_session(organya_t* org) {
     for (i = 0; i < ORG_NUM_TRACKS; i++) {
         sess->angles[i] = 0;
         sess->resource_upto[i] = 0;
+        if (i < 8) {
+            sess->pi_cycles[i] = 0;
+        }
     }
 
     return sess;
@@ -236,7 +246,7 @@ int organya_session_track_sounding(org_session_t* sess, int track) {
     if (cur_resource == NULL || cur_resource->duration == 0) {
         return 0;
     }
-    end = cur_resource->start + cur_resource->duration - 1;
-    return sess->current_click >= cur_resource->start &&
+    end = cur_resource->note_start + cur_resource->duration - 1;
+    return sess->current_click >= cur_resource->note_start &&
         sess->current_click <= end;
 }

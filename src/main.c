@@ -10,6 +10,8 @@ void create_tone(void *userdata, Uint8 *stream, int len);
 int sampler(signed char* samples, int length, double angle);
 int drum_sampler(signed char* samples, int length, double position);
 int read_samples(void);
+double melody_frequency(const track_t* track, unsigned char note);
+int clamp_sample(int sample);
 
 #define BEAT_SIZE 35
 #define TUNING_NOTE 440
@@ -23,8 +25,6 @@ int read_samples(void);
 #define SAMPLE_LENGTH     256
 #define SAMPLES           100
 #define NUM_DRUM_SAMPLES  28
-
-#define DRUM_PITCH_OFFSET (0)
 
 signed char *audio_samples[SAMPLES];
 
@@ -101,42 +101,42 @@ int main(int argc, char *argv[]) {
     return EXIT_SUCCESS;
 }
 
-int frequencies[ORG_NUM_TRACKS];
-double angles[ORG_NUM_TRACKS];
-
-unsigned int current_click = 0;
-
 void create_tone(void *userdata, Uint8 *stream, int len) {
     int i, j;
     int frame_count = len / (sizeof(Sint16) * 2);
+    double frequencies[8] = {0};
     Sint16 *output = (Sint16 *)stream;
 
+    (void)userdata;
+
     for (i = 0; i < ORG_NUM_TRACKS; i++) {
+        track_t* track = &org->tracks[i];
         resource_t* cur_resource =
             organya_session_get_resource(session, i);
 
         if (cur_resource == NULL) {
-            frequencies[i] = 0;
             continue;
         }
 
-        if (i >= 8 && cur_resource->note != ORG_NO_CHANGE &&
+        if (cur_resource->triggers_note &&
             cur_resource->start == session->current_click) {
-            angles[i] = 0.0;
+            session->angles[i] = 0.0;
+            if (i < 8) {
+                session->pi_cycles[i] = 0.0;
+            }
         }
 
-        if (organya_session_track_sounding(session, i) || (i >= 8 && cur_resource->start <= session->current_click)) {
-            frequencies[i] = TUNING_NOTE *
-                pow(TEMPERAMENT, (float)(cur_resource->note - A440 + (i >= 8 ? DRUM_PITCH_OFFSET : 0)));
-        } else {
-            frequencies[i] = 0;
+        if (i < 8 && organya_session_track_sounding(session, i)) {
+            frequencies[i] = melody_frequency(track, cur_resource->note);
         }
     }
 
     for(i = 0; i < frame_count; i++) {
-        int mixed_sample = 0;
+        int mixed_left = 0;
+        int mixed_right = 0;
 
         for (j = 0; j < ORG_NUM_TRACKS; j++) {
+            double left_gain, right_gain;
             int track_sample;
             track_t* cur_track = &org->tracks[j];
             resource_t* cur_resource =
@@ -145,41 +145,71 @@ void create_tone(void *userdata, Uint8 *stream, int len) {
                 continue;
             }
             if (j < 8) {
+                double pi_limit = 4.0 * (cur_resource->note / 12 + 1);
+
+                if (!organya_session_track_sounding(session, j) ||
+                    (cur_track->pi && session->pi_cycles[j] >= pi_limit)) {
+                    continue;
+                }
                 track_sample =
                     sampler(audio_samples[cur_track->instrument],
-                            SAMPLE_LENGTH, angles[j]);
-                angles[j] += (2 * PI / SAMPLE_FREQUENCY) * frequencies[j];
+                            SAMPLE_LENGTH, session->angles[j]);
+                session->angles[j] +=
+                    (2 * PI / SAMPLE_FREQUENCY) * frequencies[j];
+                if (cur_track->pi) {
+                    session->pi_cycles[j] += frequencies[j] / SAMPLE_FREQUENCY;
+                }
 
-                if (angles[j] >= 2.0*PI) {
-                    angles[j] -=  2.0*PI;
+                if (session->angles[j] >= 2.0*PI) {
+                    session->angles[j] -=  2.0*PI;
                 }
 
             } else if (cur_resource->start <= session->current_click) {
                 track_sample =
                     drum_sampler(drum_samples[cur_track->instrument],
                                  drum_sample_lengths[cur_track->instrument],
-                                 angles[j]);
-                angles[j] +=
+                                 session->angles[j]);
+                session->angles[j] +=
                     (double)cur_resource->note * drum_sample_frequency /
                     SAMPLE_FREQUENCY;
             } else {
                 continue;
             }
 
-            mixed_sample +=
-                track_sample * (float)(cur_resource->volume) / 254.0;
-            if (mixed_sample > 127) {
-                mixed_sample = 127;
-            } else if (mixed_sample <= -128) {
-                mixed_sample = -128;
-            }
+            left_gain = cur_resource->pan <= 6
+                ? 1.0 : (12 - cur_resource->pan) / 6.0;
+            right_gain = cur_resource->pan >= 6
+                ? 1.0 : cur_resource->pan / 6.0;
+            mixed_left += track_sample * cur_resource->volume /
+                254.0 * left_gain;
+            mixed_right += track_sample * cur_resource->volume /
+                254.0 * right_gain;
         }
 
-        output[i * 2] = mixed_sample * 256;
-        output[i * 2 + 1] = mixed_sample * 256;
+        output[i * 2] = clamp_sample(mixed_left) * 256;
+        output[i * 2 + 1] = clamp_sample(mixed_right) * 256;
     }
 
     organya_click_session(session);
+}
+
+double melody_frequency(const track_t* track, unsigned char note) {
+    static const int wave_sizes[8] = {256, 256, 128, 128, 64, 32, 16, 8};
+    double frequency = TUNING_NOTE *
+        pow(TEMPERAMENT, (double)(note - A440));
+
+    return frequency +
+        ((int)track->frequency - 1000) / (double)wave_sizes[note / 12];
+}
+
+int clamp_sample(int sample) {
+    if (sample > 127) {
+        return 127;
+    }
+    if (sample < -128) {
+        return -128;
+    }
+    return sample;
 }
 
 int sampler(signed char* samples, int length, double angle) {

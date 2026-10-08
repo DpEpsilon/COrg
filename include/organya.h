@@ -6,14 +6,18 @@
 
 typedef struct resource {
     unsigned int start;
+    unsigned int note_start;
     unsigned char note;
     unsigned char duration;
     unsigned char volume;
     unsigned char pan;
+    unsigned char triggers_note;
 } resource_t;
 
 typedef struct track {
+    unsigned short frequency;
     unsigned char instrument;
+    unsigned char pi;
     unsigned short num_resources;
     unsigned int loop_start_resource;
     resource_t* resources;
@@ -28,6 +32,7 @@ typedef struct organya {
 
 typedef struct org_session {
     double angles[ORG_NUM_TRACKS];
+    double pi_cycles[8];
     unsigned short resource_upto[ORG_NUM_TRACKS];
     unsigned int current_click;
     organya_t* org;
