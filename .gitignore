@@ -1,5 +1,6 @@
 # Binaries
 corg
+corg.exe
 *.o
 
 # Backup files from vim and emacs
