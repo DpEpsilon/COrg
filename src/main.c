@@ -6,6 +6,8 @@
 #include "organya.h"
 
 void create_tone(void *userdata, Uint8 *stream, int len);
+static void start_click(void);
+static unsigned int next_click_length(void);
 int sampler(signed char* samples, int length, double angle);
 int drum_sampler(signed char* samples, int length, double position);
 int read_samples(void);
@@ -24,6 +26,7 @@ int clamp_sample(int sample);
 #define SAMPLE_LENGTH     256
 #define SAMPLES           100
 #define NUM_DRUM_SAMPLES  28
+#define AUDIO_BUFFER_FRAMES  1024
 
 signed char *audio_samples[SAMPLES];
 
@@ -33,13 +36,15 @@ int drum_sample_frequency;
 
 organya_t* org;
 org_session_t* session;
+static unsigned int frames_until_click;
+static unsigned int click_frame_remainder;
+static int click_started;
 
 int main(int argc, char *argv[]) {
     /* Audio Setup */
     int audio_open = 0;
     int sdl_initialized = 0;
     int status = EXIT_FAILURE;
-    unsigned int samples_per_click;
     SDL_AudioSpec desired = {0};
     SDL_AudioSpec obtained = {0};
 
@@ -62,17 +67,10 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    samples_per_click =
-        (unsigned int)SAMPLE_FREQUENCY * org->wait_value / 1000;
-    if (samples_per_click == 0 || samples_per_click > 65535) {
-        fprintf(stderr, "Organya wait value is out of range.\n");
-        goto cleanup;
-    }
-
     desired.freq = SAMPLE_FREQUENCY;
     desired.format = AUDIO_S16SYS;
     desired.channels = 2;
-    desired.samples = samples_per_click;
+    desired.samples = AUDIO_BUFFER_FRAMES;
     desired.callback = create_tone;
 
     if (SDL_Init(SDL_INIT_AUDIO) < 0) {
@@ -115,95 +113,141 @@ cleanup:
 }
 
 void create_tone(void *userdata, Uint8 *stream, int len) {
-    int i, j;
+    int frame_offset = 0;
     int frame_count = len / (sizeof(Sint16) * 2);
-    double frequencies[8] = {0};
     Sint16 *output = (Sint16 *)stream;
 
     (void)userdata;
 
+    while (frame_offset < frame_count) {
+        double frequencies[8] = {0};
+        int frames_to_render;
+        int j;
+
+        if (frames_until_click == 0) {
+            start_click();
+            frames_until_click = next_click_length();
+        }
+        frames_to_render = frame_count - frame_offset;
+        if (frames_to_render > (int)frames_until_click) {
+            frames_to_render = frames_until_click;
+        }
+
+        for (j = 0; j < 8; j++) {
+            track_t* track = &org->tracks[j];
+            resource_t* cur_resource =
+                organya_session_get_resource(session, j);
+
+            if (cur_resource != NULL &&
+                organya_session_track_sounding(session, j)) {
+                frequencies[j] = melody_frequency(track, cur_resource->note);
+            }
+        }
+
+        for (j = 0; j < frames_to_render; j++) {
+            int mixed_left = 0;
+            int mixed_right = 0;
+            int track_number;
+
+            for (track_number = 0; track_number < ORG_NUM_TRACKS;
+                 track_number++) {
+                double left_gain, right_gain;
+                int track_sample;
+                track_t* cur_track = &org->tracks[track_number];
+                resource_t* cur_resource =
+                    organya_session_get_resource(session, track_number);
+                if (cur_resource == NULL) {
+                    continue;
+                }
+                if (track_number < 8) {
+                    double pi_limit = 4.0 * (cur_resource->note / 12 + 1);
+
+                    if (!organya_session_track_sounding(session, track_number) ||
+                        (cur_track->pi &&
+                         session->pi_cycles[track_number] >= pi_limit)) {
+                        continue;
+                    }
+                    track_sample =
+                        sampler(audio_samples[cur_track->instrument],
+                                SAMPLE_LENGTH,
+                                session->angles[track_number]);
+                    session->angles[track_number] +=
+                        (2 * PI / SAMPLE_FREQUENCY) *
+                        frequencies[track_number];
+                    if (cur_track->pi) {
+                        session->pi_cycles[track_number] +=
+                            frequencies[track_number] / SAMPLE_FREQUENCY;
+                    }
+
+                    if (session->angles[track_number] >= 2.0*PI) {
+                        session->angles[track_number] -= 2.0*PI;
+                    }
+
+                } else if (cur_resource->start <= session->current_click) {
+                    track_sample =
+                        drum_sampler(drum_samples[cur_track->instrument],
+                                     drum_sample_lengths[cur_track->instrument],
+                                     session->angles[track_number]);
+                    session->angles[track_number] +=
+                        (double)cur_resource->note * drum_sample_frequency /
+                        SAMPLE_FREQUENCY;
+                } else {
+                    continue;
+                }
+
+                left_gain = cur_resource->pan <= 6
+                    ? 1.0 : (12 - cur_resource->pan) / 6.0;
+                right_gain = cur_resource->pan >= 6
+                    ? 1.0 : cur_resource->pan / 6.0;
+                mixed_left += track_sample * cur_resource->volume /
+                    254.0 * left_gain;
+                mixed_right += track_sample * cur_resource->volume /
+                    254.0 * right_gain;
+            }
+
+            output[(frame_offset + j) * 2] = clamp_sample(mixed_left) * 256;
+            output[(frame_offset + j) * 2 + 1] =
+                clamp_sample(mixed_right) * 256;
+        }
+        frame_offset += frames_to_render;
+        frames_until_click -= frames_to_render;
+    }
+}
+
+static void start_click(void) {
+    int i;
+
+    if (click_started) {
+        organya_click_session(session);
+    } else {
+        click_started = 1;
+    }
+
     for (i = 0; i < ORG_NUM_TRACKS; i++) {
-        track_t* track = &org->tracks[i];
         resource_t* cur_resource =
             organya_session_get_resource(session, i);
 
-        if (cur_resource == NULL) {
-            continue;
-        }
-
-        if (cur_resource->triggers_note &&
+        if (cur_resource != NULL && cur_resource->triggers_note &&
             cur_resource->start == session->current_click) {
             session->angles[i] = 0.0;
             if (i < 8) {
                 session->pi_cycles[i] = 0.0;
             }
         }
-
-        if (i < 8 && organya_session_track_sounding(session, i)) {
-            frequencies[i] = melody_frequency(track, cur_resource->note);
-        }
     }
+}
 
-    for(i = 0; i < frame_count; i++) {
-        int mixed_left = 0;
-        int mixed_right = 0;
+static unsigned int next_click_length(void) {
+    unsigned long numerator =
+        (unsigned long)SAMPLE_FREQUENCY * org->wait_value;
+    unsigned int frames = numerator / 1000;
 
-        for (j = 0; j < ORG_NUM_TRACKS; j++) {
-            double left_gain, right_gain;
-            int track_sample;
-            track_t* cur_track = &org->tracks[j];
-            resource_t* cur_resource =
-                organya_session_get_resource(session, j);
-            if (cur_resource == NULL) {
-                continue;
-            }
-            if (j < 8) {
-                double pi_limit = 4.0 * (cur_resource->note / 12 + 1);
-
-                if (!organya_session_track_sounding(session, j) ||
-                    (cur_track->pi && session->pi_cycles[j] >= pi_limit)) {
-                    continue;
-                }
-                track_sample =
-                    sampler(audio_samples[cur_track->instrument],
-                            SAMPLE_LENGTH, session->angles[j]);
-                session->angles[j] +=
-                    (2 * PI / SAMPLE_FREQUENCY) * frequencies[j];
-                if (cur_track->pi) {
-                    session->pi_cycles[j] += frequencies[j] / SAMPLE_FREQUENCY;
-                }
-
-                if (session->angles[j] >= 2.0*PI) {
-                    session->angles[j] -=  2.0*PI;
-                }
-
-            } else if (cur_resource->start <= session->current_click) {
-                track_sample =
-                    drum_sampler(drum_samples[cur_track->instrument],
-                                 drum_sample_lengths[cur_track->instrument],
-                                 session->angles[j]);
-                session->angles[j] +=
-                    (double)cur_resource->note * drum_sample_frequency /
-                    SAMPLE_FREQUENCY;
-            } else {
-                continue;
-            }
-
-            left_gain = cur_resource->pan <= 6
-                ? 1.0 : (12 - cur_resource->pan) / 6.0;
-            right_gain = cur_resource->pan >= 6
-                ? 1.0 : cur_resource->pan / 6.0;
-            mixed_left += track_sample * cur_resource->volume /
-                254.0 * left_gain;
-            mixed_right += track_sample * cur_resource->volume /
-                254.0 * right_gain;
-        }
-
-        output[i * 2] = clamp_sample(mixed_left) * 256;
-        output[i * 2 + 1] = clamp_sample(mixed_right) * 256;
+    click_frame_remainder += numerator % 1000;
+    if (click_frame_remainder >= 1000) {
+        frames++;
+        click_frame_remainder -= 1000;
     }
-
-    organya_click_session(session);
+    return frames;
 }
 
 double melody_frequency(const track_t* track, unsigned char note) {
