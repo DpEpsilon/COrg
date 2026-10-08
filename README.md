@@ -24,6 +24,18 @@ Requires SDL 2
 
     $ make
 
+### Windows
+
+A self-contained corg.exe, with SDL 2 linked statically, can be
+cross-compiled with MinGW-w64. Download SDL2-devel-2.x.x-mingw.tar.gz
+from https://github.com/libsdl-org/SDL/releases, extract it, and run:
+
+    $ make windows SDL2_MINGW=path/to/SDL2-2.x.x/x86_64-w64-mingw32
+
+On Fedora, the compiler is in the mingw64-gcc package. corg.exe looks
+for orgsamp.dat in the current directory, so run it from the folder
+that contains it.
+
 Running
 -------
 
