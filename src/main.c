@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include <SDL2/SDL.h>
 
@@ -17,6 +18,9 @@ static void voice_gains(const resource_t* resource,
                         double* left, double* right);
 static void advance_voice(org_voice_t* voice, int track, double step);
 static void trigger_voice(org_session_t* session, int track);
+static void lowpass_init(org_lowpass_t* lowpass, double cutoff);
+static double lowpass_process(org_lowpass_t* lowpass, int channel,
+                              double input);
 double sampler(signed char* samples, int length, double angle);
 double drum_sampler(signed char* samples, int length, double position);
 int read_samples(void);
@@ -44,6 +48,9 @@ Sint16 clamp_sample(double sample);
    the offsets that hide waveform jumps when a voice is retriggered. */
 #define DECLICK_TIME 0.002
 
+/* Cutoff, in Hz, of the optional output low-pass filter. */
+#define LOWPASS_FREQUENCY 17000.0
+
 signed char *audio_samples[SAMPLES];
 
 int drum_sample_lengths[NUM_DRUM_SAMPLES];
@@ -54,14 +61,28 @@ int main(int argc, char *argv[]) {
     /* Audio Setup */
     organya_t* org = NULL;
     org_session_t* session = NULL;
+    const char* filename = NULL;
+    int lowpass = 0;
+    int i;
     int audio_open = 0;
     int sdl_initialized = 0;
     int status = EXIT_FAILURE;
     SDL_AudioSpec desired = {0};
     SDL_AudioSpec obtained = {0};
 
-    if (argc <= 1) {
-        fprintf(stderr, "Must supply filename.\n");
+    for (i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-l") == 0 ||
+            strcmp(argv[i], "--lowpass") == 0) {
+            lowpass = 1;
+        } else if (argv[i][0] == '-' || filename != NULL) {
+            filename = NULL;
+            break;
+        } else {
+            filename = argv[i];
+        }
+    }
+    if (filename == NULL) {
+        fprintf(stderr, "Usage: %s [-l|--lowpass] FILE.org\n", argv[0]);
         goto cleanup;
     }
 
@@ -69,7 +90,7 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    org = organya_open(argv[1]);
+    org = organya_open(filename);
     if (org == NULL) {
         goto cleanup;
     }
@@ -79,6 +100,9 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
     session->frames_until_click = next_click_length(session);
+    if (lowpass) {
+        lowpass_init(&session->lowpass, LOWPASS_FREQUENCY);
+    }
 
     desired.freq = SAMPLE_FREQUENCY;
     desired.format = AUDIO_S16SYS;
@@ -192,6 +216,10 @@ static void render_frames(org_session_t* session, Sint16 *output,
             mixed_right += sample * 256.0 * voice->gain_right;
         }
 
+        if (session->lowpass.enabled) {
+            mixed_left = lowpass_process(&session->lowpass, 0, mixed_left);
+            mixed_right = lowpass_process(&session->lowpass, 1, mixed_right);
+        }
         output[i * 2] = clamp_sample(mixed_left * MIX_GAIN);
         output[i * 2 + 1] = clamp_sample(mixed_right * MIX_GAIN);
     }
@@ -291,6 +319,36 @@ static void trigger_voice(org_session_t* session, int track) {
     voice->angle = 0.0;
     voice->pi_cycles = 0.0;
     voice->declick_offset = voice->last_sample - voice_sample(session, track);
+}
+
+/* Second-order Butterworth low-pass (RBJ cookbook biquad, Q = 1/sqrt(2)). */
+static void lowpass_init(org_lowpass_t* lowpass, double cutoff) {
+    double w0 = 2.0 * PI * cutoff / SAMPLE_FREQUENCY;
+    double alpha = sin(w0) / sqrt(2.0);
+    double a0 = 1.0 + alpha;
+
+    memset(lowpass, 0, sizeof(*lowpass));
+    lowpass->enabled = 1;
+    lowpass->b0 = (1.0 - cos(w0)) / 2.0 / a0;
+    lowpass->b1 = (1.0 - cos(w0)) / a0;
+    lowpass->b2 = lowpass->b0;
+    lowpass->a1 = -2.0 * cos(w0) / a0;
+    lowpass->a2 = (1.0 - alpha) / a0;
+}
+
+static double lowpass_process(org_lowpass_t* lowpass, int channel,
+                              double input) {
+    double output = lowpass->b0 * input +
+        lowpass->b1 * lowpass->x1[channel] +
+        lowpass->b2 * lowpass->x2[channel] -
+        lowpass->a1 * lowpass->y1[channel] -
+        lowpass->a2 * lowpass->y2[channel];
+
+    lowpass->x2[channel] = lowpass->x1[channel];
+    lowpass->x1[channel] = input;
+    lowpass->y2[channel] = lowpass->y1[channel];
+    lowpass->y1[channel] = output;
+    return output;
 }
 
 double melody_frequency(const track_t* track, unsigned char note) {

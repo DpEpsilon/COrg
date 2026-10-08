@@ -39,8 +39,15 @@ typedef struct org_voice {
     double declick_offset;
 } org_voice_t;
 
+typedef struct org_lowpass {
+    int enabled;
+    double b0, b1, b2, a1, a2;
+    double x1[2], x2[2], y1[2], y2[2];
+} org_lowpass_t;
+
 typedef struct org_session {
     org_voice_t voices[ORG_NUM_TRACKS];
+    org_lowpass_t lowpass;
     unsigned short resource_upto[ORG_NUM_TRACKS];
     unsigned int current_click;
     unsigned int frames_until_click;
